@@ -37,6 +37,10 @@ Verdicts:
 
 Rules:
 - Judge ONLY against the evidence shown. Outside knowledge is irrelevant.
+- The claim and the evidence may be in different languages. Judge meaning, not
+  wording: a Hindi or Marathi claim faithfully restating English evidence is
+  `supported`. Figures must still match exactly once digits are read as
+  numbers, whatever script they are written in.
 - A claim whose numbers disagree with the evidence is `contradicted`, never
   `partial`.
 - Cite the evidence labels that decided your verdict.

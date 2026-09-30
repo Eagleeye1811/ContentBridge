@@ -19,6 +19,12 @@ ALLOWED_KINDS = re.compile(r"^Allowed node kinds:\s*(?P<kinds>.+)$", re.MULTILIN
 CLAIM_RE = re.compile(r"^CLAIM (?P<n>\d+): (?P<text>.+)$", re.MULTILINE)
 EVIDENCE_RE = re.compile(r"^\[e(?P<claim>\d+)\.(?P<k>\d+)\][^\n]*\n(?P<text>.+)$", re.MULTILINE)
 MAX_NODES = re.compile(r"^Maximum nodes:\s*(?P<n>\d+)$", re.MULTILINE)
+LANGUAGE_RE = re.compile(r"^Write the output in (?P<lang>[^.(]+)", re.MULTILINE)
+
+# Not a translation. A Devanagari marker so the non-English path exercises
+# script validation, digit normalization and danda splitting offline.
+DEVANAGARI_MARKER = "\u0938\u0942\u091a\u0928\u093e: "
+DEVANAGARI_TERMINATOR = "\u0964"
 NUMERIC = re.compile(r"\d")
 SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
@@ -95,9 +101,26 @@ def _content_ir_from_prompt(prompt: str) -> dict:
 
     facts = [(m.group("id"), m.group("text").strip()) for m in FACT_MARKER.finditer(prompt)]
 
+    language = LANGUAGE_RE.search(prompt)
+    devanagari = bool(language) and language.group("lang").strip().startswith(("Hindi", "Marathi"))
+
+    def localize(statement: str) -> str:
+        if not devanagari:
+            return statement
+        # Numbers stay in Latin digits, exactly as the real prompt instructs.
+        return f"{DEVANAGARI_MARKER}{statement.rstrip('.')}{DEVANAGARI_TERMINATOR}"
+
     nodes: list[dict] = []
     if "heading" in allowed:
-        nodes.append({"id": "n0", "kind": "heading", "text": "Summary", "level": 2, "fact_ids": []})
+        nodes.append(
+            {
+                "id": "n0",
+                "kind": "heading",
+                "text": localize("Summary"),
+                "level": 2,
+                "fact_ids": [],
+            }
+        )
 
     body_kind = next((k for k in ("paragraph", "bullets", "post", "slide") if k in allowed), None)
     if body_kind is None:
@@ -107,16 +130,17 @@ def _content_ir_from_prompt(prompt: str) -> dict:
         if len(nodes) >= max_nodes:
             break
         node: dict = {"id": f"n{i}", "kind": body_kind, "fact_ids": [label]}
+        localized = localize(statement)
         if body_kind in {"bullets", "post"}:
-            node["items"] = [statement]
+            node["items"] = [localized]
         elif body_kind == "slide":
-            node["title"] = statement[:60]
-            node["items"] = [statement]
+            node["title"] = localized[:60]
+            node["items"] = [localized]
         else:
-            node["text"] = statement
+            node["text"] = localized
         nodes.append(node)
 
-    return {"title": "Generated Output", "nodes": nodes}
+    return {"title": localize("Generated Output"), "nodes": nodes}
 
 
 def _verdicts_from_prompt(prompt: str) -> dict:

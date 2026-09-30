@@ -32,6 +32,25 @@ SCALES: list[tuple[str, Decimal]] = [
     ("k", Decimal(1_000)),
 ]
 
+# Devanagari month names, so a date written in Hindi or Marathi reduces to
+# the same ISO value as the English source.
+DEVANAGARI_MONTHS: dict[str, int] = {
+    "\u091c\u0928\u0935\u0930\u0940": 1,
+    "\u092b\u0930\u0935\u0930\u0940": 2,
+    "\u092e\u093e\u0930\u094d\u091a": 3,
+    "\u0905\u092a\u094d\u0930\u0948\u0932": 4,
+    "\u092e\u0908": 5,
+    "\u092e\u0947": 5,
+    "\u091c\u0942\u0928": 6,
+    "\u091c\u0941\u0932\u093e\u0908": 7,
+    "\u0905\u0917\u0938\u094d\u0924": 8,
+    "\u0938\u093f\u0924\u0902\u092c\u0930": 9,
+    "\u0938\u092a\u094d\u091f\u0947\u0902\u092c\u0930": 9,
+    "\u0911\u0915\u094d\u091f\u094b\u092c\u0930": 10,
+    "\u0928\u0935\u0902\u092c\u0930": 11,
+    "\u0926\u093f\u0938\u0902\u092c\u0930": 12,
+}
+
 MONTHS = {
     m: i
     for i, names in enumerate(
@@ -53,6 +72,7 @@ MONTHS = {
     )
     for m in names
 }
+MONTHS.update(DEVANAGARI_MONTHS)
 
 NUMBER_RE = re.compile(r"[-+]?\d[\d,\s]*(?:\.\d+)?")
 PERCENT_RE = re.compile(r"(?:%|\bper\s?cent\b|\bpercent\b)", re.IGNORECASE)
@@ -60,7 +80,7 @@ CURRENCY_RE = re.compile(r"(?:₹|\bINR\b|\brupees?\b|\bRs\.?\b|\$|\bUSD\b)", re
 
 ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 DMY_TEXT_RE = re.compile(
-    r"\b(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{4})\b",
+    r"(\d{1,2})\s+([A-Za-z\u0900-\u097F]{2,12})\.?\s+(\d{4})",
 )
 MDY_TEXT_RE = re.compile(
     r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})\b",

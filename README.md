@@ -120,8 +120,33 @@ frontend/src/
 | 3 | One pipeline, Advisory + Summary | **done** |
 | 4 | Verification + consistency matrix | **done** |
 | 5 | Remaining outputs + pptx/docx renderers | **done** |
-| 6 | Audience profiles + Hindi/Marathi | next |
-| 7 | Review, approval gate, demo polish | |
+| 6 | Audience profiles + Hindi/Marathi | **done** |
+| 7 | Review, approval gate, demo polish | next |
+
+### What Phase 6 gives you
+
+**7 formats x 5 audiences x 3 languages = 105 combinations, one generator.**
+
+Audiences change register and emphasis only. Every profile carries the same
+closing instruction — never drop a figure, soften a finding, or add
+reassurance the facts do not support — and a test asserts it is there.
+
+Multilingual is more than a prompt line. Four things had to be real:
+
+- **Digits.** `३७` and `37` canonicalize to the same value, so a Hindi output
+  agrees with an English source instead of looking like a mismatch. A wrong
+  figure is still caught: `४२` against a source of `37` is flagged.
+- **Dates.** Devanagari month names parse, so `११ मार्च २०२६` and
+  `11 March 2026` both reduce to `2026-03-11`.
+- **Sentences.** Devanagari ends a sentence with a danda (`।`), not a full
+  stop. Without handling it, a Hindi paragraph arrives as one unverifiable
+  claim.
+- **Script.** Asking for Marathi and silently receiving English is a failure a
+  reviewer would have to catch by eye, so generation checks the script and
+  refuses rather than shipping English under a Marathi label.
+
+The claim judge is told the claim and its evidence may be in different
+languages, and to compare figures by value rather than by spelling.
 
 ### What Phase 5 gives you
 
