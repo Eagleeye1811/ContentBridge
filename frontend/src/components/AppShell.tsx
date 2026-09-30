@@ -3,7 +3,6 @@ import { useAuth } from '@/lib/auth'
 
 const NAV = [
   { to: '/documents', label: 'Documents' },
-  { to: '/consistency', label: 'Consistency' },
   { to: '/approvals', label: 'Approvals' },
   { to: '/settings', label: 'Settings' },
 ]

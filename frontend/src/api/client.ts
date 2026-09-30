@@ -8,12 +8,15 @@ import type {
   HealthResponse,
   Job,
   Catalog,
+  ConsistencyReport,
   ContentIR,
   GenerateRequest,
   Output,
   OutputDetail,
+  Issue,
   SearchHit,
   TokenResponse,
+  VerificationSummary,
   UploadResponse,
   User,
 } from '@/types/api'
@@ -126,6 +129,16 @@ export const api = {
   regenerate: (id: string) => request<Job>(`/outputs/${id}/regenerate`, { method: 'POST' }),
   exportUrl: (id: string, format: string) =>
     objectUrl(`/outputs/${id}/export?format=${format}`),
+
+  verifyOutput: (id: string) => request<Job>(`/outputs/${id}/verify`, { method: 'POST' }),
+  getClaims: (id: string) => request<VerificationSummary>(`/outputs/${id}/claims`),
+  consistency: (documentId: string) =>
+    request<ConsistencyReport>(`/documents/${documentId}/consistency`),
+  updateIssue: (issueId: string, status: string, note?: string) =>
+    request<Issue>(`/consistency-issues/${issueId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    }),
 
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
 

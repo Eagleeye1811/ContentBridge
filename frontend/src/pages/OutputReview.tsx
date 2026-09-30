@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import ContentIRView from '@/components/ContentIRView'
+import VerificationPanel from '@/components/VerificationPanel'
 import type { ContentIR, Fact, OutputDetail } from '@/types/api'
 
 export default function OutputReview() {
@@ -128,6 +129,13 @@ export default function OutputReview() {
         </div>
 
         <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+          <VerificationPanel
+            outputId={id}
+            onVerified={load}
+            onFocusNode={(nodeId) =>
+              document.getElementById(`ir-${nodeId}`)?.scrollIntoView({ block: 'center' })
+            }
+          />
           <Editor draft={draft} onChange={setDraft} />
           <EvidencePanel fact={selectedFact} />
         </div>

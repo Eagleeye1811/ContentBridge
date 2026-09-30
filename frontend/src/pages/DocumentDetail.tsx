@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import DocumentViewer from '@/components/DocumentViewer'
+import ConsistencyMatrix from '@/components/ConsistencyMatrix'
 import FactSheetPanel from '@/components/FactSheetPanel'
 import OutputsPanel from '@/components/OutputsPanel'
 import StudioPanel from '@/components/StudioPanel'
@@ -11,7 +12,11 @@ export default function DocumentDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const tab: 'source' | 'facts' | 'studio' | 'outputs' = pathname.endsWith('/facts')
+  const tab: 'source' | 'facts' | 'studio' | 'outputs' | 'consistency' = pathname.endsWith(
+    '/consistency',
+  )
+    ? 'consistency'
+    : pathname.endsWith('/facts')
     ? 'facts'
     : pathname.endsWith('/studio')
       ? 'studio'
@@ -57,6 +62,7 @@ export default function DocumentDetail() {
             ['facts', 'Source of Truth', `/documents/${id}/facts`],
             ['studio', 'Studio', `/documents/${id}/studio`],
             ['outputs', 'Outputs', `/documents/${id}/outputs`],
+            ['consistency', 'Consistency', `/documents/${id}/consistency`],
           ] as const
         ).map(([key, label, to]) => (
           <button
@@ -76,6 +82,7 @@ export default function DocumentDetail() {
       {tab === 'facts' && <FactSheetPanel doc={doc} blocks={blocks} />}
       {tab === 'studio' && <StudioPanel doc={doc} />}
       {tab === 'outputs' && <OutputsPanel doc={doc} />}
+      {tab === 'consistency' && <ConsistencyMatrix doc={doc} />}
       {tab === 'source' && <SourceTab doc={doc} blocks={blocks} />}
     </div>
   )

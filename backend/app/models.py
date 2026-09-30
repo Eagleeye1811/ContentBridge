@@ -109,6 +109,7 @@ Verdict = Enum(
     native_enum=False,
 )
 IssueStatus = Enum("open", "resolved", "accepted", name="issue_status", native_enum=False)
+IssueKind = Enum("value_mismatch", "unsourced_number", name="issue_kind", native_enum=False)
 Severity = Enum("low", "medium", "high", name="severity", native_enum=False)
 ReviewAction = Enum("comment", "edit", "approve", "reject", name="review_action", native_enum=False)
 
@@ -369,9 +370,10 @@ class ConsistencyIssue(Base, TimestampMixin):
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    fact_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("facts.id", ondelete="CASCADE"), nullable=False
-    )
+    kind: Mapped[str] = mapped_column(IssueKind, nullable=False, default="value_mismatch")
+    # Null for an unsourced number: the output stated a figure that belongs to
+    # no fact at all, so there is nothing to point at.
+    fact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("facts.id", ondelete="CASCADE"))
     severity: Mapped[str] = mapped_column(Severity, nullable=False, default="high")
     expected_value: Mapped[str | None] = mapped_column(String(255))
     # {output_id: observed_value} — drives the facts x outputs matrix in the UI.

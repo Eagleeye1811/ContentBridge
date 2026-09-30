@@ -31,11 +31,8 @@ export default function App() {
         <Route path="/documents/:id/facts" element={<DocumentDetail />} />
         <Route path="/documents/:id/studio" element={<DocumentDetail />} />
         <Route path="/documents/:id/outputs" element={<DocumentDetail />} />
+        <Route path="/documents/:id/consistency" element={<DocumentDetail />} />
         <Route path="/outputs/:id" element={<OutputReview />} />
-        <Route
-          path="/consistency"
-          element={<Placeholder title="Consistency Matrix" phase="Phase 4" />}
-        />
         <Route path="/approvals" element={<Placeholder title="Approvals" phase="Phase 7" />} />
         <Route path="/settings" element={<Placeholder title="Settings" phase="Phase 7" />} />
       </Route>

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime
 
 import anyio
 from sqlalchemy import delete, select, update
@@ -385,5 +386,285 @@ async def generate_outputs(
 
         except Exception as exc:  # noqa: BLE001 - surfaced through the job row
             log.exception("generation job failed for document %s", document_id)
+            await db.rollback()
+            await mark(db, job, status="failed", stage="failed", error=str(exc))
+
+
+# --------------------------------------------------------------------------
+# Verification
+# --------------------------------------------------------------------------
+
+
+async def _persist_consistency(db, document_id: uuid.UUID, analysis) -> int:
+    """Replace this document's issues with the current analysis.
+
+    Human decisions survive: an issue a reviewer accepted or resolved keeps
+    that status if the same issue reappears.
+    """
+    from app.models import ConsistencyIssue
+
+    def identity(kind: str, fact_id, expected: str | None, observed: dict) -> tuple:
+        """Stable identity for an issue across re-verification runs.
+
+        An unsourced figure has no fact and no expected value, so it has to be
+        identified by what was observed instead. Getting this wrong silently
+        discards a reviewer's decision.
+        """
+        if kind == "unsourced_number":
+            return (kind, tuple(sorted((observed or {}).items())))
+        return (kind, str(fact_id), expected)
+
+    existing = list(
+        await db.scalars(
+            select(ConsistencyIssue).where(ConsistencyIssue.document_id == document_id)
+        )
+    )
+    decided = {
+        identity(i.kind, i.fact_id, i.expected_value, i.observed): (i.status, i.note)
+        for i in existing
+        if i.status != "open"
+    }
+    await db.execute(delete(ConsistencyIssue).where(ConsistencyIssue.document_id == document_id))
+
+    high = 0
+    for row in analysis.mismatches:
+        observed = {c.output_id: c.stated for c in row.cells if c.stated is not None}
+        status, note = decided.get(
+            identity("value_mismatch", row.fact_id, row.expected, observed), ("open", None)
+        )
+        if status == "open":
+            high += 1
+        db.add(
+            ConsistencyIssue(
+                document_id=document_id,
+                kind="value_mismatch",
+                fact_id=uuid.UUID(row.fact_id),
+                severity="high",
+                expected_value=row.expected,
+                observed=observed,
+                status=status,
+                note=note,
+            )
+        )
+
+    for item in analysis.unsourced:
+        observed = {item.output_id: item.value}
+        status, note = decided.get(
+            identity("unsourced_number", None, None, observed), ("open", None)
+        )
+        db.add(
+            ConsistencyIssue(
+                document_id=document_id,
+                kind="unsourced_number",
+                fact_id=None,
+                severity="medium",
+                expected_value=None,
+                observed=observed,
+                status=status,
+                note=note or item.snippet,
+            )
+        )
+
+    await db.commit()
+    return high
+
+
+async def verify_output(output_id: uuid.UUID, job_id: uuid.UUID) -> None:
+    """Run both verification layers over one output.
+
+    Layer 1 is document-wide by nature: consistency is a property of the set of
+    outputs, not of any single one, so verifying one recomputes the matrix.
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.models import ClaimEvidence, Fact, FactSheet, Output, OutputClaim
+    from app.schemas.content_ir import ContentIR
+    from app.services.retrieval.search import search as retrieval_search
+    from app.services.verification.atomizer import atomize
+    from app.services.verification.claims import (
+        ClaimResult,
+        EvidenceRef,
+        evidence_fingerprint,
+        gather_evidence,
+        verify_prepared,
+    )
+    from app.services.verification.consistency import analyze
+    from app.services.verification.scoring import trust_score
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        output = await db.get(Output, output_id)
+        if job is None or output is None:
+            log.error("verify: job %s or output %s vanished", job_id, output_id)
+            return
+
+        try:
+            await mark(db, job, status="running", stage="loading", progress=0.05)
+
+            sheet = await db.scalar(
+                select(FactSheet)
+                .where(FactSheet.id == output.fact_sheet_id)
+                .options(selectinload(FactSheet.facts).selectinload(Fact.evidence))
+            )
+            if sheet is None:
+                raise RuntimeError("The fact sheet this output was generated from is gone.")
+
+            facts = {str(f.id): f for f in sheet.facts}
+            blocks = {
+                b.id: b
+                for b in await db.scalars(
+                    select(DocumentBlock).where(DocumentBlock.document_id == output.document_id)
+                )
+            }
+
+            # --- Layer 1: deterministic, document-wide ---------------------
+            await mark(db, job, stage="checking consistency", progress=0.2)
+            siblings = list(
+                await db.scalars(select(Output).where(Output.document_id == output.document_id))
+            )
+            analysis = analyze(
+                list(sheet.facts),
+                [(str(o.id), ContentIR.model_validate(o.content_ir)) for o in siblings],
+            )
+            high_issues = await _persist_consistency(db, output.document_id, analysis)
+            mine = sum(
+                1
+                for row in analysis.mismatches
+                for cell in row.cells
+                if cell.output_id == str(output.id) and cell.agrees is False
+            )
+
+            # --- Layer 2: claim adjudication -------------------------------
+            await mark(db, job, stage="verifying claims", progress=0.4)
+            ir = ContentIR.model_validate(output.content_ir)
+            claims = atomize(ir)
+
+            async def evidence_for(claim):
+                refs: list[EvidenceRef] = []
+                seen: set[uuid.UUID] = set()
+                for fid in claim.fact_ids:
+                    fact = facts.get(fid)
+                    if fact is None:
+                        continue
+                    for ev in fact.evidence:
+                        block = blocks.get(ev.block_id)
+                        if block is None or block.id in seen:
+                            continue
+                        seen.add(block.id)
+                        refs.append(
+                            EvidenceRef(
+                                block_id=block.id,
+                                text=block.text,
+                                page_no=block.page_no,
+                                section_path=block.section_path,
+                            )
+                        )
+                if refs:
+                    return refs
+                # Uncited claims still get a hearing rather than an automatic fail.
+                try:
+                    for hit in await retrieval_search(output.document_id, claim.text, limit=3):
+                        for bid in hit.block_ids:
+                            block = blocks.get(bid)
+                            if block is None or block.id in seen:
+                                continue
+                            seen.add(block.id)
+                            refs.append(
+                                EvidenceRef(
+                                    block_id=block.id,
+                                    text=block.text,
+                                    page_no=block.page_no,
+                                    section_path=block.section_path,
+                                    similarity=hit.score,
+                                )
+                            )
+                except Exception:  # noqa: BLE001 - retrieval is a bonus, not a requirement
+                    log.warning("retrieval fallback failed for a claim", exc_info=True)
+                return refs
+
+            prepared = await gather_evidence(claims, evidence_for)
+
+            # Reuse verdicts for claims whose text and evidence are unchanged,
+            # so re-verifying after a small edit costs almost nothing.
+            cached: dict[str, OutputClaim] = {}
+            for prior in await db.scalars(
+                select(OutputClaim).where(OutputClaim.output_id == output.id)
+            ):
+                prior_blocks = list(
+                    await db.scalars(
+                        select(ClaimEvidence.block_id).where(ClaimEvidence.claim_id == prior.id)
+                    )
+                )
+                if prior.verdict is None:
+                    continue
+                key = evidence_fingerprint(
+                    prior.text,
+                    [
+                        EvidenceRef(block_id=b, text="", page_no=0, section_path="")
+                        for b in prior_blocks
+                    ],
+                )
+                cached[key] = prior
+
+            todo, reused = [], []
+            for claim, evidence in prepared:
+                hit = cached.get(evidence_fingerprint(claim.text, evidence))
+                if hit is None:
+                    todo.append((claim, evidence))
+                else:
+                    reused.append(
+                        ClaimResult(
+                            claim=claim,
+                            verdict=hit.verdict,
+                            score=hit.score or 0.0,
+                            rationale=hit.rationale or "",
+                            evidence=evidence,
+                        )
+                    )
+
+            results = reused + await verify_prepared(todo)
+
+            await mark(db, job, stage="scoring", progress=0.85)
+            await db.execute(delete(OutputClaim).where(OutputClaim.output_id == output.id))
+            for result in results:
+                row = OutputClaim(
+                    output_id=output.id,
+                    node_id=result.claim.node_id,
+                    text=result.claim.text,
+                    cited_fact_ids=[uuid.UUID(f) for f in result.claim.fact_ids],
+                    verdict=result.verdict,
+                    score=result.score,
+                    rationale=result.rationale,
+                )
+                db.add(row)
+                await db.flush()
+                db.add_all(
+                    ClaimEvidence(claim_id=row.id, block_id=e.block_id, similarity=e.similarity)
+                    for e in result.evidence
+                )
+
+            output.trust_score = trust_score([r.verdict for r in results], mine)
+            output.status = "verified"
+            output.verified_at = datetime.now(UTC)
+            await db.commit()
+
+            await mark(
+                db,
+                job,
+                status="succeeded",
+                stage="done",
+                progress=1.0,
+                result={
+                    "claims": len(results),
+                    "trust_score": output.trust_score,
+                    "mismatches_in_this_output": mine,
+                    "open_high_issues": high_issues,
+                    "unsourced": len(analysis.unsourced),
+                    "claims_reused_from_cache": len(reused),
+                },
+            )
+
+        except Exception as exc:  # noqa: BLE001 - surfaced through the job row
+            log.exception("verification failed for output %s", output_id)
             await db.rollback()
             await mark(db, job, status="failed", stage="failed", error=str(exc))

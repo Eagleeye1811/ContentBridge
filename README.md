@@ -118,10 +118,45 @@ frontend/src/
 | 1 | Ingestion + traceability | **done** |
 | 2 | RAG + Source of Truth | **done** |
 | 3 | One pipeline, Advisory + Summary | **done** |
-| 4 | Verification + consistency matrix | next |
-| 5 | Remaining outputs + pptx/docx renderers | |
+| 4 | Verification + consistency matrix | **done** |
+| 5 | Remaining outputs + pptx/docx renderers | next |
 | 6 | Audience profiles + Hindi/Marathi | |
 | 7 | Review, approval gate, demo polish | |
+
+### What Phase 4 gives you
+
+Two verification layers, deliberately split by reliability.
+
+**Layer 1 — deterministic consistency.** No model, no network, instant. Because
+every output cites the same fact ids and values were canonicalized at
+extraction, checking agreement is a string comparison. The facts x outputs
+matrix falls out of it:
+
+```
+fact                  source   advisory   ppt     summary
+credentials_compromised  37       37 OK    37 OK    42 MISMATCH
+incident_date      2026-03-11     OK       OK       OK
+```
+
+It is tuned to stay quiet. A figure it cannot attribute unambiguously is not
+reported: reference codes (`CB/IR/2026/0412`), clock times (`02:14`), timezone
+offsets and version strings are skipped outright, a value hidden inside a date
+counts as present, and a mismatch is only attributed when exactly one figure in
+the node is unaccounted for. A false alarm in front of judges costs more than
+a miss.
+
+Figures appearing in an output but in no fact are reported separately as
+**unsourced** — the system flags them and never rewrites them.
+
+**Layer 2 — claim adjudication.** Claims are atomized per node and judged
+against the blocks they cite, with retrieval as a fallback so an uncited claim
+still gets a hearing. Verdicts are supported / partial / unsupported /
+contradicted. Verdicts are cached on `hash(claim + evidence)`, so re-verifying
+after a small edit is nearly free.
+
+**Trust score and the approval gate.** A weighted blend of verdicts, penalized
+per open high-severity issue. Any contradicted claim blocks approval, and the
+reason is shown rather than implied.
 
 ### What Phase 3 gives you
 

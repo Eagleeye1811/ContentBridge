@@ -194,3 +194,86 @@ export interface GenerateRequest {
   audience: string
   languages: string[]
 }
+
+export type VerdictKind = 'supported' | 'partial' | 'unsupported' | 'contradicted'
+
+export interface ClaimEvidence {
+  block_id: string
+  page_no: number
+  section_path: string
+  quote: string
+  similarity: number | null
+}
+
+export interface Claim {
+  id: string
+  node_id: string
+  text: string
+  cited_fact_ids: string[]
+  verdict: VerdictKind | null
+  score: number | null
+  rationale: string | null
+  evidence: ClaimEvidence[]
+}
+
+export interface VerificationSummary {
+  output_id: string
+  status: string
+  trust_score: number | null
+  verified_at: string | null
+  counts: Partial<Record<VerdictKind | 'unverified', number>>
+  blocking_reasons: string[]
+  claims: Claim[]
+}
+
+export interface MatrixCell {
+  output_id: string
+  stated: string | null
+  agrees: boolean | null
+  snippet: string
+}
+
+export interface MatrixRow {
+  fact_id: string
+  key: string
+  statement: string
+  expected: string | null
+  unit: string | null
+  has_mismatch: boolean
+  cells: MatrixCell[]
+}
+
+export interface Unsourced {
+  output_id: string
+  value: string
+  snippet: string
+}
+
+export interface Issue {
+  id: string
+  kind: 'value_mismatch' | 'unsourced_number'
+  fact_id: string | null
+  severity: 'low' | 'medium' | 'high'
+  expected_value: string | null
+  observed: Record<string, string>
+  status: 'open' | 'resolved' | 'accepted'
+  note: string | null
+  created_at: string
+}
+
+export interface OutputColumn {
+  id: string
+  type: string
+  audience: string
+  language: string
+  version: number
+  trust_score: number | null
+}
+
+export interface ConsistencyReport {
+  document_id: string
+  outputs: OutputColumn[]
+  rows: MatrixRow[]
+  unsourced: Unsourced[]
+  issues: Issue[]
+}

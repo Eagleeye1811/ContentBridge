@@ -21,7 +21,7 @@ export default function ContentIRView({ ir, facts, selectedFactId, onSelectFact 
     <article className="space-y-4">
       <h1 className="text-xl font-semibold tracking-tight">{ir.title}</h1>
       {ir.nodes.map((node) => (
-        <section key={node.id}>
+        <section key={node.id} id={`ir-${node.id}`} className="scroll-mt-4">
           <NodeBody node={node} />
           <Citations
             node={node}
