@@ -322,22 +322,53 @@ async def test_generate_refuses_an_empty_source_of_truth():
         )
 
 
+def _payload_for(spec):
+    """A minimal valid node for whatever kinds this format allows."""
+    kind = spec.allowed_kinds[0]
+    node = {"id": "n1", "kind": kind, "fact_ids": ["f0"]}
+    if kind in {"bullets", "post"}:
+        node["items"] = ["A grounded point"]
+    elif kind == "slide":
+        node["title"] = "Overview"
+        node["items"] = ["A grounded point"]
+    elif kind == "table":
+        node["rows"] = [["Metric", "Value"], ["Accounts", "37"]]
+    else:
+        node["text"] = "Body."
+    return {"title": "T", "nodes": [node]}
+
+
 async def test_one_generator_serves_every_format(monkeypatch):
     """The point of the architecture: same call, different FormatSpec."""
-    payload = {
-        "title": "T",
-        "nodes": [{"id": "n1", "kind": "paragraph", "text": "Body.", "fact_ids": ["f0"]}],
-    }
-    for key in FORMATS:
+    for key, spec in FORMATS.items():
+        payload = _payload_for(spec)
         use(ScriptedProvider(payload, payload), monkeypatch)
         result = await generate(
             facts=FACTS,
-            spec=get_format(key),
+            spec=spec,
             audience=get_audience("officer"),
             language="en",
             source_name="doc.pdf",
         )
         assert result.content_ir.nodes, key
+        assert result.content_ir.nodes[0].kind in spec.allowed_kinds
+
+
+async def test_a_format_rejects_node_kinds_it_does_not_allow(monkeypatch):
+    """A deck may not contain paragraphs: the FormatSpec is enforced, not advisory."""
+    paragraph = {
+        "title": "T",
+        "nodes": [{"id": "n1", "kind": "paragraph", "text": "Body.", "fact_ids": ["f0"]}],
+    }
+    use(ScriptedProvider(paragraph, paragraph), monkeypatch)
+    with pytest.raises(GenerationError):
+        await generate(
+            facts=FACTS,
+            spec=get_format("ppt"),
+            audience=get_audience("officer"),
+            language="en",
+            source_name="doc.pdf",
+        )
 
 
 # --- renderers -------------------------------------------------------------

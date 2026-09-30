@@ -15,6 +15,6 @@ SPEC = FormatSpec(
   support one
 
 Be direct and specific. Every number must come from a fact you cite.""",
-    renderers=("markdown", "text"),
+    renderers=("docx", "markdown", "html", "text"),
     max_nodes=14,
 )

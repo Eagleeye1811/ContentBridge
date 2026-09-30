@@ -32,6 +32,7 @@ class OutputOut(BaseModel):
     model: str
     created_at: datetime
     title: str = ""
+    renderers: list[str] = Field(default_factory=list)
 
 
 class OutputDetail(OutputOut):

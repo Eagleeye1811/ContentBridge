@@ -58,14 +58,29 @@ def _render_node(node: Node) -> str:
     return (node.text or "").strip()
 
 
-def render(ir: ContentIR, *, include_citations: bool = False) -> str:
+def render(
+    ir: ContentIR,
+    *,
+    include_citations: bool = False,
+    citations: dict[str, str] | None = None,
+    **_: object,
+) -> str:
     parts = [f"# {ir.title}", ""]
+    used: list[str] = []
+
     for node in ir.nodes:
         rendered = _render_node(node)
         if not rendered:
             continue
         if include_citations and node.fact_ids:
             rendered += f"\n\n<!-- facts: {', '.join(node.fact_ids)} -->"
+            used += [f for f in node.fact_ids if f not in used]
         parts.append(rendered)
         parts.append("")
+
+    if include_citations and used:
+        parts += ["## Sources", ""]
+        parts += [f"- {(citations or {}).get(fid, fid)}" for fid in used]
+        parts.append("")
+
     return "\n".join(parts).rstrip() + "\n"

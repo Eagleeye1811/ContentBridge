@@ -119,9 +119,40 @@ frontend/src/
 | 2 | RAG + Source of Truth | **done** |
 | 3 | One pipeline, Advisory + Summary | **done** |
 | 4 | Verification + consistency matrix | **done** |
-| 5 | Remaining outputs + pptx/docx renderers | next |
-| 6 | Audience profiles + Hindi/Marathi | |
+| 5 | Remaining outputs + pptx/docx renderers | **done** |
+| 6 | Audience profiles + Hindi/Marathi | next |
 | 7 | Review, approval gate, demo polish | |
+
+### What Phase 5 gives you
+
+All seven output types, and real files.
+
+| Output | ContentIR shape | Exports as |
+|---|---|---|
+| Advisory | heading, paragraph, bullets, callout | docx, md, html, txt |
+| Presentation | `slide` only | **pptx**, md, html |
+| Executive Summary | heading, paragraph, bullets | docx, md, html |
+| Official Email | heading, paragraph, bullets | txt, html, md |
+| Social Post | `post` only | txt, md |
+| Press Release | heading, paragraph, quote | docx, md, html |
+| Report | heading, paragraph, bullets, table | docx, md, html |
+
+Every one of them is the same `generate()` call with a different FormatSpec.
+A test asserts that, and another asserts that every renderer a spec promises
+actually exists.
+
+**Decks are drawn in code, not filled into a template.** A `.potx` would be a
+binary asset nobody in the repo can diff or edit; drawing each slide gives
+exact control over spacing and keeps the deck's look reviewable. Bullets are
+capped per slide and long detail goes to speaker notes, because a slide is a
+prompt for a speaker rather than a document.
+
+**Word documents use Word's own styles** (Title, Heading, List Bullet, Table
+Grid), so they open looking normal and stay editable.
+
+Any export can carry a **Sources appendix** listing every fact it used with
+page and section. Renderers stay pure: they are handed resolved citation
+strings, they never look anything up.
 
 ### What Phase 4 gives you
 

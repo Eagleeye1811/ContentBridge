@@ -169,6 +169,7 @@ export interface Output {
   model: string
   created_at: string
   title: string
+  renderers: string[]
 }
 
 export interface OutputDetail extends Output {

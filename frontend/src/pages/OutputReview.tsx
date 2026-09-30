@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import ContentIRView from '@/components/ContentIRView'
+import ExportBar from '@/components/ExportBar'
 import VerificationPanel from '@/components/VerificationPanel'
 import type { ContentIR, Fact, OutputDetail } from '@/types/api'
 
@@ -47,19 +48,6 @@ export default function OutputReview() {
     }
   }
 
-  async function download(format: string) {
-    try {
-      const url = await api.exportUrl(id, format)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${output?.type ?? 'output'}.${format === 'markdown' ? 'md' : 'txt'}`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed')
-    }
-  }
-
   if (error && !output) {
     return <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
   }
@@ -84,12 +72,12 @@ export default function OutputReview() {
           {output.status}
         </span>
         <div className="ml-auto flex gap-2">
-          <button
-            onClick={() => download('markdown')}
-            className="rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium hover:border-ink-400"
-          >
-            Export .md
-          </button>
+          <ExportBar
+            outputId={id}
+            filenameStem={`${output.type}_${output.audience}_${output.language}_v${output.version}`}
+            renderers={output.renderers}
+            onError={setError}
+          />
           <button
             onClick={save}
             disabled={!dirty || busy}

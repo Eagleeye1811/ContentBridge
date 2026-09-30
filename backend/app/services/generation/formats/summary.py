@@ -12,6 +12,6 @@ SPEC = FormatSpec(
 
 Lead with what a decision maker needs first: what happened, how big it is, what
 is being asked of them. No preamble, no restating the document structure.""",
-    renderers=("markdown", "text"),
+    renderers=("docx", "markdown", "html"),
     max_nodes=10,
 )

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import uuid
 
+import anyio
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.facts import _serialize as serialize_sheet
-from app.models import AuditLog, Document, Fact, FactSheet, Job, Output
+from app.models import AuditLog, Document, DocumentBlock, Export, Fact, FactSheet, Job, Output
 from app.pipeline.stages import generate_outputs
 from app.schemas.content_ir import ContentIR
 from app.schemas.documents import JobOut
@@ -24,7 +25,8 @@ from app.schemas.outputs import (
 from app.services.generation.audiences import AUDIENCES, LANGUAGES
 from app.services.generation.formats import FORMATS, UnknownFormat, get_format
 from app.services.llm import llm_available
-from app.services.rendering import EXTENSIONS, MEDIA_TYPES, RENDERERS, render
+from app.services.rendering import RENDERERS, get_renderer, render_bytes
+from app.services.storage import storage
 
 router = APIRouter(tags=["outputs"])
 
@@ -49,7 +51,13 @@ def _title(output: Output) -> str:
 
 
 def _summary(output: Output) -> OutputOut:
-    return OutputOut.model_validate(output).model_copy(update={"title": _title(output)})
+    try:
+        renderers = list(get_format(output.type).renderers)
+    except UnknownFormat:
+        renderers = []
+    return OutputOut.model_validate(output).model_copy(
+        update={"title": _title(output), "renderers": renderers}
+    )
 
 
 @router.get("/catalog", response_model=CatalogOut)
@@ -209,9 +217,10 @@ async def export_output(
     db: DbSession,
     user: CurrentUser,
     format: str = Query("markdown", description=f"one of: {', '.join(sorted(RENDERERS))}"),
-    citations: bool = Query(False, description="annotate each block with its fact ids"),
+    citations: bool = Query(False, description="append a source list"),
 ) -> Response:
-    """Render the approved ContentIR. Pure function, no LLM call."""
+    """Render the ContentIR. A pure function of the stored structure -- no LLM
+    call, so the same output always exports identically."""
     output = await _owned_output(db, user, output_id)
     if format not in RENDERERS:
         raise HTTPException(422, f"Unknown format {format!r}. Available: {', '.join(RENDERERS)}")
@@ -223,12 +232,68 @@ async def export_output(
             f"{spec.name} cannot be rendered as {format!r}. Available: {', '.join(spec.renderers)}",
         )
 
+    document = await db.get(Document, output.document_id)
+    source_name = document.filename if document else ""
+
+    # Resolve fact ids to human-readable citations for the appendix. Renderers
+    # stay pure: they are handed the strings, they do not look anything up.
+    citation_map: dict[str, str] = {}
+    if citations:
+        sheet = await db.scalar(
+            select(FactSheet)
+            .where(FactSheet.id == output.fact_sheet_id)
+            .options(selectinload(FactSheet.facts).selectinload(Fact.evidence))
+        )
+        if sheet is not None:
+            blocks = {
+                b.id: b
+                for b in await db.scalars(
+                    select(DocumentBlock).where(DocumentBlock.document_id == output.document_id)
+                )
+            }
+            for fact in sheet.facts:
+                places = []
+                for ev in fact.evidence:
+                    block = blocks.get(ev.block_id)
+                    if block is None:
+                        continue
+                    where = f"p.{block.page_no}"
+                    if block.section_path:
+                        where += f", {block.section_path}"
+                    places.append(where)
+                citation_map[str(fact.id)] = f"{fact.statement} \u2014 {source_name}" + (
+                    f" ({'; '.join(dict.fromkeys(places))})" if places else ""
+                )
+
     ir = ContentIR.model_validate(output.content_ir)
-    body = render(ir, format, include_citations=citations)
-    filename = f"{output.type}_{output.language}.{EXTENSIONS[format]}"
+    body = render_bytes(
+        ir,
+        format,
+        include_citations=citations,
+        citations=citation_map,
+        source_name=source_name,
+    )
+
+    renderer = get_renderer(format)
+    stem = f"{output.type}_{output.audience}_{output.language}_v{output.version}"
+    filename = f"{stem}.{renderer.extension}"
+
+    # Record what left the building.
+    uri = await anyio.to_thread.run_sync(storage.put, f"exports/{output.id}/{filename}", body)
+    db.add(Export(output_id=output.id, format=format, storage_uri=uri, size_bytes=len(body)))
+    db.add(
+        AuditLog(
+            actor_id=user.id,
+            entity="output",
+            entity_id=output.id,
+            action="export",
+            payload={"format": format, "bytes": len(body)},
+        )
+    )
+    await db.commit()
 
     return Response(
         content=body,
-        media_type=MEDIA_TYPES[format],
+        media_type=renderer.media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

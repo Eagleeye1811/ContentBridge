@@ -127,8 +127,8 @@ export const api = {
       body: JSON.stringify({ content_ir: contentIr }),
     }),
   regenerate: (id: string) => request<Job>(`/outputs/${id}/regenerate`, { method: 'POST' }),
-  exportUrl: (id: string, format: string) =>
-    objectUrl(`/outputs/${id}/export?format=${format}`),
+  exportUrl: (id: string, format: string, citations = false) =>
+    objectUrl(`/outputs/${id}/export?format=${format}&citations=${citations}`),
 
   verifyOutput: (id: string) => request<Job>(`/outputs/${id}/verify`, { method: 'POST' }),
   getClaims: (id: string) => request<VerificationSummary>(`/outputs/${id}/claims`),
