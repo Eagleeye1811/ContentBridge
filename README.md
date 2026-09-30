@@ -115,12 +115,29 @@ frontend/src/
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Scaffold, schema, auth, health | **done** |
-| 1 | Ingestion + traceability | next |
-| 2 | RAG + Source of Truth | |
+| 1 | Ingestion + traceability | **done** |
+| 2 | RAG + Source of Truth | next |
 | 3 | One pipeline, Advisory + Summary | |
 | 4 | Verification + consistency matrix | |
 | 5 | Remaining outputs + pptx/docx renderers | |
 | 6 | Audience profiles + Hindi/Marathi | |
 | 7 | Review, approval gate, demo polish | |
+
+### What Phase 1 gives you
+
+Upload a PDF, DOCX or PPTX and every extracted block records its page, section
+path and — for PDF and PPTX — its bounding box. Open a document and clicking any
+block highlights it on the rendered page, and vice versa. That block id is what
+facts, claims and citations will point at for the rest of the build.
+
+Sample sources live in `samples/` (regenerate with
+`backend/.venv/bin/python scripts/make_samples.py`).
+
+## Testing
+
+```bash
+cd backend && .venv/bin/python -m pytest tests -q   # parser contract tests
+cd frontend && npm run build                        # typecheck + build
+```
 
 Full architecture plan: `~/.claude/plans/async-mixing-storm.md`

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from '@/components/AppShell'
+import DocumentDetail from '@/pages/DocumentDetail'
 import Documents from '@/pages/Documents'
 import Login from '@/pages/Login'
 import Placeholder from '@/pages/Placeholder'
@@ -25,6 +26,7 @@ export default function App() {
         }
       >
         <Route path="/documents" element={<Documents />} />
+        <Route path="/documents/:id" element={<DocumentDetail />} />
         <Route path="/fact-sheet" element={<Placeholder title="Fact Sheet" phase="Phase 2" />} />
         <Route path="/studio" element={<Placeholder title="Studio" phase="Phase 3" />} />
         <Route path="/review" element={<Placeholder title="Review" phase="Phase 3" />} />

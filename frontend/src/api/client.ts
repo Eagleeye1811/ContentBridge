@@ -1,4 +1,5 @@
-import type { HealthResponse, TokenResponse, User } from '@/types/api'
+import { parseSseFrames } from '@/lib/sse'
+import type { Block, Doc, HealthResponse, Job, TokenResponse, UploadResponse, User } from '@/types/api'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const TOKEN_KEY = 'contentbridge.token'
@@ -18,42 +19,108 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+function authHeader(): Record<string, string> {
   const token = tokenStore.get()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+async function failure(res: Response): Promise<ApiError> {
+  let detail = res.statusText
+  try {
+    const body = await res.json()
+    // FastAPI sends a string for HTTPException, an array for validation errors.
+    detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+  } catch {
+    /* keep statusText */
+  }
+  return new ApiError(res.status, detail)
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
+    headers: { 'Content-Type': 'application/json', ...authHeader(), ...init.headers },
   })
-
-  if (!res.ok) {
-    let detail = res.statusText
-    try {
-      const body = await res.json()
-      // FastAPI sends a string for HTTPException, an array for validation errors.
-      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
-    } catch {
-      /* keep statusText */
-    }
-    throw new ApiError(res.status, detail)
-  }
+  if (!res.ok) throw await failure(res)
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+}
+
+/** Fetch a protected binary endpoint as an object URL (an <img> cannot send headers). */
+async function objectUrl(path: string): Promise<string> {
+  const res = await fetch(`${BASE}${path}`, { headers: authHeader() })
+  if (!res.ok) throw await failure(res)
+  return URL.createObjectURL(await res.blob())
 }
 
 export const api = {
   health: () => request<HealthResponse>('/health'),
+
   login: (email: string, password: string) =>
     request<TokenResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
-  register: (email: string, password: string, name: string, role: string) =>
-    request<TokenResponse>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name, role }),
-    }),
   me: () => request<User>('/auth/me'),
+
+  listDocuments: () => request<Doc[]>('/documents'),
+  getDocument: (id: string) => request<Doc>(`/documents/${id}`),
+  listBlocks: (id: string, page?: number) =>
+    request<Block[]>(`/documents/${id}/blocks${page ? `?page=${page}` : ''}`),
+  pageImageUrl: (id: string, page: number, dpi = 130) =>
+    objectUrl(`/documents/${id}/pages/${page}/image?dpi=${dpi}`),
+
+  uploadDocument: async (file: File): Promise<UploadResponse> => {
+    const form = new FormData()
+    form.append('file', file)
+    // No Content-Type header: the browser must set the multipart boundary.
+    const res = await fetch(`${BASE}/documents`, {
+      method: 'POST',
+      headers: authHeader(),
+      body: form,
+    })
+    if (!res.ok) throw await failure(res)
+    return (await res.json()) as UploadResponse
+  },
+
+  getJob: (id: string) => request<Job>(`/jobs/${id}`),
+
+  /**
+   * Stream job progress. EventSource cannot send an Authorization header, so
+   * this reads the SSE frames off a fetch body instead.
+   */
+  streamJob: async (
+    jobId: string,
+    onProgress: (job: Job) => void,
+    signal?: AbortSignal,
+  ): Promise<Job> => {
+    const res = await fetch(`${BASE}/jobs/${jobId}/stream`, { headers: authHeader(), signal })
+    if (!res.ok || !res.body) throw await failure(res)
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let last: Job | null = null
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      const { events, rest } = parseSseFrames(buffer)
+      buffer = rest
+
+      for (const { event, data } of events) {
+        if (event === 'error') throw new ApiError(500, data)
+        const job = JSON.parse(data) as Job
+        last = job
+        onProgress(job)
+        if (event === 'done') {
+          void reader.cancel()
+          return job
+        }
+      }
+    }
+    if (!last) throw new ApiError(500, 'Stream closed before any progress arrived')
+    return last
+  },
 }

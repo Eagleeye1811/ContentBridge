@@ -1,0 +1,7 @@
+# Repo-root config for code outside backend/ (scripts/, tooling).
+# backend/pyproject.toml carries the matching settings for the app itself.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]

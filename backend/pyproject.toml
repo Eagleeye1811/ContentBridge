@@ -52,3 +52,10 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are function calls in defaults by design.
+extend-immutable-calls = [
+    "fastapi.Body", "fastapi.Depends", "fastapi.File", "fastapi.Form",
+    "fastapi.Header", "fastapi.Path", "fastapi.Query",
+]
