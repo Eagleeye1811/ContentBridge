@@ -1,5 +1,17 @@
 import { parseSseFrames } from '@/lib/sse'
-import type { Block, Doc, HealthResponse, Job, TokenResponse, UploadResponse, User } from '@/types/api'
+import type {
+  Block,
+  Doc,
+  Fact,
+  FactSheet,
+  FactUpdate,
+  HealthResponse,
+  Job,
+  SearchHit,
+  TokenResponse,
+  UploadResponse,
+  User,
+} from '@/types/api'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 const TOKEN_KEY = 'contentbridge.token'
@@ -81,6 +93,17 @@ export const api = {
     if (!res.ok) throw await failure(res)
     return (await res.json()) as UploadResponse
   },
+
+  getFactSheet: (documentId: string) =>
+    request<FactSheet>(`/documents/${documentId}/fact-sheet`),
+  runExtraction: (documentId: string) =>
+    request<Job>(`/documents/${documentId}/fact-sheet`, { method: 'POST' }),
+  updateFact: (factId: string, patch: FactUpdate) =>
+    request<Fact>(`/facts/${factId}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  search: (documentId: string, q: string, limit = 8) =>
+    request<SearchHit[]>(
+      `/documents/${documentId}/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
 
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
 

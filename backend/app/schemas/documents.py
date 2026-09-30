@@ -41,6 +41,7 @@ class JobOut(BaseModel):
     status: str
     stage: str
     progress: float
+    result: dict | None
     error: str | None
     created_at: datetime
     finished_at: datetime | None

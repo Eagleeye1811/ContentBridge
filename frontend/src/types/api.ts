@@ -80,3 +80,50 @@ export interface UploadResponse {
   document: Doc
   job: Job
 }
+
+export interface Evidence {
+  block_id: string
+  page_no: number
+  section_path: string
+  quote: string
+  char_start: number | null
+  char_end: number | null
+  bbox: BBox | null
+}
+
+export type FactType = 'metric' | 'date' | 'entity' | 'finding' | 'recommendation' | 'risk'
+
+export interface Fact {
+  id: string
+  key: string
+  type: FactType
+  statement: string
+  canonical_value: string | null
+  unit: string | null
+  confidence: number
+  edited_by_human: boolean
+  evidence: Evidence[]
+}
+
+export interface FactSheet {
+  id: string
+  document_id: string
+  version: number
+  model: string
+  created_at: string
+  facts: Fact[]
+}
+
+export interface FactUpdate {
+  statement?: string
+  canonical_value?: string | null
+  unit?: string | null
+}
+
+export interface SearchHit {
+  text: string
+  block_ids: string[]
+  page_no: number
+  section_path: string
+  score: number
+}

@@ -27,3 +27,6 @@ pgdata/
 .DS_Store
 .idea/
 .vscode/
+
+# TypeScript incremental build state
+*.tsbuildinfo

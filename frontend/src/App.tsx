@@ -27,7 +27,7 @@ export default function App() {
       >
         <Route path="/documents" element={<Documents />} />
         <Route path="/documents/:id" element={<DocumentDetail />} />
-        <Route path="/fact-sheet" element={<Placeholder title="Fact Sheet" phase="Phase 2" />} />
+        <Route path="/documents/:id/facts" element={<DocumentDetail />} />
         <Route path="/studio" element={<Placeholder title="Studio" phase="Phase 3" />} />
         <Route path="/review" element={<Placeholder title="Review" phase="Phase 3" />} />
         <Route

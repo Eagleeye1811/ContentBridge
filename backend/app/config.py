@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     max_upload_mb: int = 50
 
     # LLM
-    llm_provider: Literal["gemini", "openai_compatible"] = "gemini"
+    llm_provider: Literal["gemini", "openai_compatible", "stub"] = "gemini"
     llm_model: str = "gemini-2.5-flash"
     llm_temperature: float = 0.2
     gemini_api_key: str = ""

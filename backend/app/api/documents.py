@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession
 from app.config import settings
 from app.models import AuditLog, Document, DocumentBlock, Job
-from app.pipeline.stages import ingest_document
+from app.pipeline.stages import process_document
 from app.schemas.documents import BlockOut, DocumentOut, JobOut, UploadResponse
 from app.services.ingestion import SUPPORTED, UnsupportedFormat, extension_of, mime_for, pdf_parser
 from app.services.storage import sha256_hex, storage
@@ -77,7 +77,7 @@ async def upload(
     # would not see these rows if we left the commit to dependency teardown.
     await db.commit()
 
-    background.add_task(ingest_document, document_id, job.id)
+    background.add_task(process_document, document_id, job.id)
 
     return UploadResponse(
         document=DocumentOut.model_validate(document),

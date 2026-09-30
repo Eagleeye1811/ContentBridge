@@ -116,12 +116,37 @@ frontend/src/
 |---|---|---|
 | 0 | Scaffold, schema, auth, health | **done** |
 | 1 | Ingestion + traceability | **done** |
-| 2 | RAG + Source of Truth | next |
-| 3 | One pipeline, Advisory + Summary | |
+| 2 | RAG + Source of Truth | **done** |
+| 3 | One pipeline, Advisory + Summary | next |
 | 4 | Verification + consistency matrix | |
 | 5 | Remaining outputs + pptx/docx renderers | |
 | 6 | Audience profiles + Hindi/Marathi | |
 | 7 | Review, approval gate, demo polish | |
+
+### What Phase 2 gives you
+
+Ingestion now continues into retrieval and a Source of Truth:
+
+- **Chunking** groups consecutive blocks but never crosses a section boundary,
+  and records the block ids it was built from.
+- **Embeddings** run locally through fastembed, so retrieval keeps working with
+  no network and no API key.
+- **Qdrant** payloads carry `document_id`, `block_ids`, `page_no` and
+  `section_path`, so a retrieval hit is citable on its own.
+- **Fact extraction** labels blocks `b0..bN` in the prompt and requires every
+  fact to cite those labels. Facts citing anything else are **dropped, not
+  repaired** — this is the guard against hallucinated citations, and the real
+  UUIDs are never shown to the model.
+- **Normalization** canonicalizes values once, at birth: `18.4 lakh` becomes
+  `1840000`, `११ मार्च` digits become ASCII, `11/03/2026` becomes `2026-03-11`.
+  Phase 4 compares against `canonical_value` instead of diffing documents.
+- **Facts are editable.** Correcting the Source of Truth is the highest-leverage
+  human action in the system, so `PATCH /facts/{id}` exists from day one.
+
+Without an LLM key the pipeline still parses, chunks, embeds and indexes; the
+document lands at `indexed` and stays fully searchable. Set
+`LLM_PROVIDER=stub` for an offline dry run that exercises the real extraction
+code path with no network.
 
 ### What Phase 1 gives you
 
@@ -136,8 +161,17 @@ Sample sources live in `samples/` (regenerate with
 ## Testing
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests -q   # parser contract tests
+cd backend && .venv/bin/python -m pytest tests -q   # parsers, chunking,
+                                                    # normalization, citation guard
 cd frontend && npm run build                        # typecheck + build
+```
+
+Try retrieval directly:
+
+```bash
+curl -G "localhost:8000/documents/$DOC/search" \
+  --data-urlencode "q=how many credentials were compromised" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 Full architecture plan: `~/.claude/plans/async-mixing-storm.md`

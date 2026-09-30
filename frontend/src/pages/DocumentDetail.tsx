@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import DocumentViewer from '@/components/DocumentViewer'
+import FactSheetPanel from '@/components/FactSheetPanel'
 import type { Block, Doc } from '@/types/api'
 
 export default function DocumentDetail() {
   const { id = '' } = useParams()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const tab: 'source' | 'facts' = pathname.endsWith('/facts') ? 'facts' : 'source'
+
   const [doc, setDoc] = useState<Doc | null>(null)
   const [blocks, setBlocks] = useState<Block[]>([])
-  const [page, setPage] = useState(1)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     Promise.all([api.getDocument(id), api.listBlocks(id)])
@@ -21,22 +23,6 @@ export default function DocumentDetail() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
   }, [id])
-
-  const pageBlocks = useMemo(() => blocks.filter((b) => b.page_no === page), [blocks, page])
-
-  // Selecting from the page should scroll the matching row into view, and vice versa.
-  const select = useCallback((blockId: string) => {
-    setSelectedId(blockId)
-    document.getElementById(`block-${blockId}`)?.scrollIntoView({ block: 'nearest' })
-  }, [])
-
-  const selectFromList = useCallback(
-    (block: Block) => {
-      if (block.page_no !== page) setPage(block.page_no)
-      setSelectedId(block.id)
-    },
-    [page],
-  )
 
   if (error) {
     return <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -56,6 +42,48 @@ export default function DocumentDetail() {
         <StatusChip status={doc.status} />
       </div>
 
+      <div className="flex gap-1 border-b border-ink-200">
+        {(
+          [
+            ['source', 'Source', `/documents/${id}`],
+            ['facts', 'Source of Truth', `/documents/${id}/facts`],
+          ] as const
+        ).map(([key, label, to]) => (
+          <button
+            key={key}
+            onClick={() => navigate(to)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+              tab === key
+                ? 'border-ink-900 font-medium text-ink-900'
+                : 'border-transparent text-ink-600 hover:text-ink-900'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'facts' ? (
+        <FactSheetPanel doc={doc} blocks={blocks} />
+      ) : (
+        <SourceTab doc={doc} blocks={blocks} />
+      )}
+    </div>
+  )
+}
+
+function SourceTab({ doc, blocks }: { doc: Doc; blocks: Block[] }) {
+  const [page, setPage] = useState(1)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const pageBlocks = useMemo(() => blocks.filter((b) => b.page_no === page), [blocks, page])
+
+  const select = useCallback((blockId: string) => {
+    setSelectedId(blockId)
+    document.getElementById(`block-${blockId}`)?.scrollIntoView({ block: 'nearest' })
+  }, [])
+
+  return (
+    <div className="space-y-4">
       {doc.page_count > 1 && (
         <div className="flex flex-wrap gap-1">
           {Array.from({ length: doc.page_count }, (_, i) => i + 1).map((p) => (
@@ -73,7 +101,7 @@ export default function DocumentDetail() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div ref={listRef} className="max-h-[75vh] space-y-1.5 overflow-y-auto pr-1">
+        <div className="max-h-[75vh] space-y-1.5 overflow-y-auto pr-1">
           {pageBlocks.length === 0 && (
             <p className="text-sm text-ink-400">No blocks extracted on this page.</p>
           )}
@@ -81,7 +109,7 @@ export default function DocumentDetail() {
             <button
               key={b.id}
               id={`block-${b.id}`}
-              onClick={() => selectFromList(b)}
+              onClick={() => setSelectedId(b.id)}
               className={`block w-full rounded-lg border p-3 text-left transition ${
                 b.id === selectedId
                   ? 'border-amber-400 bg-amber-50'
@@ -121,8 +149,10 @@ function StatusChip({ status }: { status: Doc['status'] }) {
   const tone =
     status === 'failed'
       ? 'bg-red-100 text-red-700'
-      : status === 'parsed' || status === 'ready'
+      : status === 'ready'
         ? 'bg-emerald-100 text-emerald-700'
-        : 'bg-ink-200 text-ink-600'
+        : status === 'parsed' || status === 'indexed'
+          ? 'bg-blue-100 text-blue-700'
+          : 'bg-ink-200 text-ink-600'
   return <span className={`rounded px-2 py-0.5 text-xs font-medium ${tone}`}>{status}</span>
 }

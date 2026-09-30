@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, documents, health, jobs
+from app.api import auth, documents, facts, health, jobs
 from app.config import settings
 
 logging.basicConfig(level=settings.log_level)
@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(documents.router)
     app.include_router(jobs.router)
+    app.include_router(facts.router)
     return app
 
 
