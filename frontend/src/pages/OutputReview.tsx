@@ -102,7 +102,7 @@ export default function OutputReview() {
             every claim traced to the source
           </span>
         )}
-        <span className="ml-auto text-ink-400">Verification arrives in Phase 4</span>
+        <span className="ml-auto text-ink-400">Every figure is checked against the source.</span>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
