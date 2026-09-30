@@ -127,3 +127,70 @@ export interface SearchHit {
   section_path: string
   score: number
 }
+
+export type NodeKind =
+  | 'heading'
+  | 'paragraph'
+  | 'bullets'
+  | 'slide'
+  | 'table'
+  | 'callout'
+  | 'quote'
+  | 'post'
+
+export interface IRNode {
+  id: string
+  kind: NodeKind
+  text?: string | null
+  items?: string[] | null
+  level?: number | null
+  title?: string | null
+  notes?: string | null
+  rows?: string[][] | null
+  severity?: 'info' | 'low' | 'medium' | 'high' | 'critical' | null
+  fact_ids: string[]
+}
+
+export interface ContentIR {
+  title: string
+  nodes: IRNode[]
+}
+
+export interface Output {
+  id: string
+  document_id: string
+  fact_sheet_id: string
+  type: string
+  audience: string
+  language: string
+  status: 'draft' | 'verified' | 'in_review' | 'approved' | 'rejected' | 'exported'
+  trust_score: number | null
+  version: number
+  model: string
+  created_at: string
+  title: string
+}
+
+export interface OutputDetail extends Output {
+  content_ir: ContentIR
+  facts: Fact[]
+}
+
+export interface FormatInfo {
+  key: string
+  name: string
+  description: string
+  renderers: string[]
+}
+
+export interface Catalog {
+  formats: FormatInfo[]
+  audiences: { key: string; name: string }[]
+  languages: Record<string, string>
+}
+
+export interface GenerateRequest {
+  types: string[]
+  audience: string
+  languages: string[]
+}

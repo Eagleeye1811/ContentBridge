@@ -3,13 +3,21 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import DocumentViewer from '@/components/DocumentViewer'
 import FactSheetPanel from '@/components/FactSheetPanel'
+import OutputsPanel from '@/components/OutputsPanel'
+import StudioPanel from '@/components/StudioPanel'
 import type { Block, Doc } from '@/types/api'
 
 export default function DocumentDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const tab: 'source' | 'facts' = pathname.endsWith('/facts') ? 'facts' : 'source'
+  const tab: 'source' | 'facts' | 'studio' | 'outputs' = pathname.endsWith('/facts')
+    ? 'facts'
+    : pathname.endsWith('/studio')
+      ? 'studio'
+      : pathname.endsWith('/outputs')
+        ? 'outputs'
+        : 'source'
 
   const [doc, setDoc] = useState<Doc | null>(null)
   const [blocks, setBlocks] = useState<Block[]>([])
@@ -47,6 +55,8 @@ export default function DocumentDetail() {
           [
             ['source', 'Source', `/documents/${id}`],
             ['facts', 'Source of Truth', `/documents/${id}/facts`],
+            ['studio', 'Studio', `/documents/${id}/studio`],
+            ['outputs', 'Outputs', `/documents/${id}/outputs`],
           ] as const
         ).map(([key, label, to]) => (
           <button
@@ -63,11 +73,10 @@ export default function DocumentDetail() {
         ))}
       </div>
 
-      {tab === 'facts' ? (
-        <FactSheetPanel doc={doc} blocks={blocks} />
-      ) : (
-        <SourceTab doc={doc} blocks={blocks} />
-      )}
+      {tab === 'facts' && <FactSheetPanel doc={doc} blocks={blocks} />}
+      {tab === 'studio' && <StudioPanel doc={doc} />}
+      {tab === 'outputs' && <OutputsPanel doc={doc} />}
+      {tab === 'source' && <SourceTab doc={doc} blocks={blocks} />}
     </div>
   )
 }

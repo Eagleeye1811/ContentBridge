@@ -14,6 +14,9 @@ import re
 from app.services.llm.base import LLMError, T
 
 BLOCK_MARKER = re.compile(r"^\[(?P<id>b\d+)\]", re.MULTILINE)
+FACT_MARKER = re.compile(r"^\[(?P<id>f\d+)\]\s*\([^)]*\)\s*(?P<text>.+)$", re.MULTILINE)
+ALLOWED_KINDS = re.compile(r"^Allowed node kinds:\s*(?P<kinds>.+)$", re.MULTILINE)
+MAX_NODES = re.compile(r"^Maximum nodes:\s*(?P<n>\d+)$", re.MULTILINE)
 NUMERIC = re.compile(r"\d")
 SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
@@ -42,6 +45,8 @@ class StubProvider:
         self, *, system: str, prompt: str, schema: type[T], temperature: float | None = None
     ) -> T:
         fields = schema.model_fields
+        if "nodes" in fields and "title" in fields:
+            return schema.model_validate(_content_ir_from_prompt(prompt))
         if "facts" not in fields:
             raise LLMError(f"StubProvider does not know how to fill {schema.__name__}")
 
@@ -66,3 +71,45 @@ class StubProvider:
                 break  # one fact per block keeps stub output small and stable
 
         return schema.model_validate({"facts": facts})
+
+
+def _content_ir_from_prompt(prompt: str) -> dict:
+    """Build a ContentIR that obeys the constraints stated in the prompt.
+
+    Like the fact path, this is not a writing implementation -- it echoes the
+    facts it was given so the surrounding machinery (kind validation, citation
+    resolution, rendering) is exercised for real.
+    """
+    kinds_match = ALLOWED_KINDS.search(prompt)
+    allowed = (
+        [k.strip() for k in kinds_match.group("kinds").split(",") if k.strip()]
+        if kinds_match
+        else ["heading", "paragraph"]
+    )
+    max_match = MAX_NODES.search(prompt)
+    max_nodes = int(max_match.group("n")) if max_match else 10
+
+    facts = [(m.group("id"), m.group("text").strip()) for m in FACT_MARKER.finditer(prompt)]
+
+    nodes: list[dict] = []
+    if "heading" in allowed:
+        nodes.append({"id": "n0", "kind": "heading", "text": "Summary", "level": 2, "fact_ids": []})
+
+    body_kind = next((k for k in ("paragraph", "bullets", "post", "slide") if k in allowed), None)
+    if body_kind is None:
+        body_kind = allowed[0] if allowed else "paragraph"
+
+    for i, (label, statement) in enumerate(facts, start=1):
+        if len(nodes) >= max_nodes:
+            break
+        node: dict = {"id": f"n{i}", "kind": body_kind, "fact_ids": [label]}
+        if body_kind in {"bullets", "post"}:
+            node["items"] = [statement]
+        elif body_kind == "slide":
+            node["title"] = statement[:60]
+            node["items"] = [statement]
+        else:
+            node["text"] = statement
+        nodes.append(node)
+
+    return {"title": "Generated Output", "nodes": nodes}

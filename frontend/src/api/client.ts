@@ -7,6 +7,11 @@ import type {
   FactUpdate,
   HealthResponse,
   Job,
+  Catalog,
+  ContentIR,
+  GenerateRequest,
+  Output,
+  OutputDetail,
   SearchHit,
   TokenResponse,
   UploadResponse,
@@ -104,6 +109,23 @@ export const api = {
     request<SearchHit[]>(
       `/documents/${documentId}/search?q=${encodeURIComponent(q)}&limit=${limit}`,
     ),
+
+  catalog: () => request<Catalog>('/catalog'),
+  listOutputs: (documentId: string) => request<Output[]>(`/documents/${documentId}/outputs`),
+  generate: (documentId: string, body: GenerateRequest) =>
+    request<Job>(`/documents/${documentId}/outputs`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  getOutput: (id: string) => request<OutputDetail>(`/outputs/${id}`),
+  updateOutput: (id: string, contentIr: ContentIR) =>
+    request<OutputDetail>(`/outputs/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content_ir: contentIr }),
+    }),
+  regenerate: (id: string) => request<Job>(`/outputs/${id}/regenerate`, { method: 'POST' }),
+  exportUrl: (id: string, format: string) =>
+    objectUrl(`/outputs/${id}/export?format=${format}`),
 
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
 

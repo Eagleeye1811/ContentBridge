@@ -3,6 +3,7 @@ import AppShell from '@/components/AppShell'
 import DocumentDetail from '@/pages/DocumentDetail'
 import Documents from '@/pages/Documents'
 import Login from '@/pages/Login'
+import OutputReview from '@/pages/OutputReview'
 import Placeholder from '@/pages/Placeholder'
 import { useAuth } from '@/lib/auth'
 import type { ReactNode } from 'react'
@@ -28,8 +29,9 @@ export default function App() {
         <Route path="/documents" element={<Documents />} />
         <Route path="/documents/:id" element={<DocumentDetail />} />
         <Route path="/documents/:id/facts" element={<DocumentDetail />} />
-        <Route path="/studio" element={<Placeholder title="Studio" phase="Phase 3" />} />
-        <Route path="/review" element={<Placeholder title="Review" phase="Phase 3" />} />
+        <Route path="/documents/:id/studio" element={<DocumentDetail />} />
+        <Route path="/documents/:id/outputs" element={<DocumentDetail />} />
+        <Route path="/outputs/:id" element={<OutputReview />} />
         <Route
           path="/consistency"
           element={<Placeholder title="Consistency Matrix" phase="Phase 4" />}

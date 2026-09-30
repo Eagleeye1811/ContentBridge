@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from app.api.deps import CurrentUser, DbSession
+from app.api.facts import _serialize as serialize_sheet
+from app.models import AuditLog, Document, Fact, FactSheet, Job, Output
+from app.pipeline.stages import generate_outputs
+from app.schemas.content_ir import ContentIR
+from app.schemas.documents import JobOut
+from app.schemas.outputs import (
+    AudienceInfo,
+    CatalogOut,
+    ContentIRUpdate,
+    FormatInfo,
+    GenerateRequest,
+    OutputDetail,
+    OutputOut,
+)
+from app.services.generation.audiences import AUDIENCES, LANGUAGES
+from app.services.generation.formats import FORMATS, UnknownFormat, get_format
+from app.services.llm import llm_available
+from app.services.rendering import EXTENSIONS, MEDIA_TYPES, RENDERERS, render
+
+router = APIRouter(tags=["outputs"])
+
+
+async def _owned_document(db: DbSession, user: CurrentUser, document_id: uuid.UUID) -> Document:
+    doc = await db.get(Document, document_id)
+    if doc is None or doc.owner_id != user.id:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+async def _owned_output(db: DbSession, user: CurrentUser, output_id: uuid.UUID) -> Output:
+    output = await db.get(Output, output_id)
+    if output is None:
+        raise HTTPException(404, "Output not found")
+    await _owned_document(db, user, output.document_id)
+    return output
+
+
+def _title(output: Output) -> str:
+    return (output.content_ir or {}).get("title", "") if output.content_ir else ""
+
+
+def _summary(output: Output) -> OutputOut:
+    return OutputOut.model_validate(output).model_copy(update={"title": _title(output)})
+
+
+@router.get("/catalog", response_model=CatalogOut)
+async def catalog() -> CatalogOut:
+    """Everything the Studio can offer, read straight from the registries."""
+    return CatalogOut(
+        formats=[
+            FormatInfo(
+                key=s.key, name=s.name, description=s.description, renderers=list(s.renderers)
+            )
+            for s in FORMATS.values()
+        ],
+        audiences=[AudienceInfo(key=a.key, name=a.name) for a in AUDIENCES.values()],
+        languages=LANGUAGES,
+    )
+
+
+@router.post("/documents/{document_id}/outputs", response_model=JobOut, status_code=202)
+async def create_outputs(
+    document_id: uuid.UUID,
+    body: GenerateRequest,
+    db: DbSession,
+    user: CurrentUser,
+    background: BackgroundTasks,
+) -> JobOut:
+    """Fan out one request across types and languages. One job, many outputs."""
+    await _owned_document(db, user, document_id)
+
+    for key in body.types:
+        try:
+            get_format(key)
+        except UnknownFormat as exc:
+            raise HTTPException(422, str(exc)) from exc
+    if body.audience not in AUDIENCES:
+        raise HTTPException(422, f"Unknown audience {body.audience!r}")
+    unknown_langs = [x for x in body.languages if x not in LANGUAGES]
+    if unknown_langs:
+        raise HTTPException(422, f"Unsupported language(s): {', '.join(unknown_langs)}")
+
+    sheet = await db.scalar(
+        select(FactSheet).where(
+            FactSheet.document_id == document_id, FactSheet.is_current.is_(True)
+        )
+    )
+    if sheet is None:
+        raise HTTPException(409, "No Source of Truth yet. Run extraction first.")
+    if not llm_available():
+        raise HTTPException(503, "No LLM provider configured.")
+
+    requests = [
+        {"type": t, "audience": body.audience, "language": lang}
+        for t in body.types
+        for lang in body.languages
+    ]
+
+    job = Job(
+        document_id=document_id,
+        kind="generate",
+        status="queued",
+        stage="queued",
+        payload={"requests": requests},
+    )
+    db.add(job)
+    db.add(
+        AuditLog(
+            actor_id=user.id,
+            entity="document",
+            entity_id=document_id,
+            action="generate",
+            payload={"requests": requests},
+        )
+    )
+    # Commit before scheduling: the task opens its own session.
+    await db.commit()
+
+    background.add_task(generate_outputs, document_id, job.id, requests)
+    return JobOut.model_validate(job)
+
+
+@router.get("/documents/{document_id}/outputs", response_model=list[OutputOut])
+async def list_outputs(document_id: uuid.UUID, db: DbSession, user: CurrentUser) -> list[OutputOut]:
+    await _owned_document(db, user, document_id)
+    rows = await db.scalars(
+        select(Output).where(Output.document_id == document_id).order_by(Output.created_at.desc())
+    )
+    return [_summary(o) for o in rows]
+
+
+@router.get("/outputs/{output_id}", response_model=OutputDetail)
+async def get_output(output_id: uuid.UUID, db: DbSession, user: CurrentUser) -> OutputDetail:
+    output = await _owned_output(db, user, output_id)
+    ir = ContentIR.model_validate(output.content_ir)
+
+    cited = {fid for node in ir.nodes for fid in node.fact_ids}
+    sheet = await db.scalar(
+        select(FactSheet)
+        .where(FactSheet.id == output.fact_sheet_id)
+        .options(selectinload(FactSheet.facts).selectinload(Fact.evidence))
+    )
+    facts = []
+    if sheet is not None:
+        serialized = await serialize_sheet(db, sheet)
+        facts = [f for f in serialized.facts if str(f.id) in cited]
+
+    return OutputDetail(
+        **_summary(output).model_dump(),
+        content_ir=ir,
+        facts=facts,
+    )
+
+
+@router.patch("/outputs/{output_id}", response_model=OutputDetail)
+async def update_output(
+    output_id: uuid.UUID, body: ContentIRUpdate, db: DbSession, user: CurrentUser
+) -> OutputDetail:
+    """Human edit. ContentIR is the unit a reviewer edits, not rendered text."""
+    output = await _owned_output(db, user, output_id)
+    if output.status == "approved":
+        raise HTTPException(409, "Approved outputs cannot be edited. Regenerate a new version.")
+
+    output.content_ir = body.content_ir.model_dump(mode="json")
+    # Any edit invalidates a prior verification.
+    output.status = "draft"
+    output.trust_score = None
+    db.add(AuditLog(actor_id=user.id, entity="output", entity_id=output.id, action="edit"))
+    await db.commit()
+
+    return await get_output(output_id, db, user)
+
+
+@router.post("/outputs/{output_id}/regenerate", response_model=JobOut, status_code=202)
+async def regenerate(
+    output_id: uuid.UUID, db: DbSession, user: CurrentUser, background: BackgroundTasks
+) -> JobOut:
+    output = await _owned_output(db, user, output_id)
+    if not llm_available():
+        raise HTTPException(503, "No LLM provider configured.")
+
+    request = {"type": output.type, "audience": output.audience, "language": output.language}
+    job = Job(
+        document_id=output.document_id,
+        kind="generate",
+        status="queued",
+        stage="queued",
+        payload={"requests": [request]},
+    )
+    db.add(job)
+    await db.commit()
+
+    background.add_task(generate_outputs, output.document_id, job.id, [request])
+    return JobOut.model_validate(job)
+
+
+@router.get("/outputs/{output_id}/export")
+async def export_output(
+    output_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    format: str = Query("markdown", description=f"one of: {', '.join(sorted(RENDERERS))}"),
+    citations: bool = Query(False, description="annotate each block with its fact ids"),
+) -> Response:
+    """Render the approved ContentIR. Pure function, no LLM call."""
+    output = await _owned_output(db, user, output_id)
+    if format not in RENDERERS:
+        raise HTTPException(422, f"Unknown format {format!r}. Available: {', '.join(RENDERERS)}")
+
+    spec = get_format(output.type)
+    if format not in spec.renderers:
+        raise HTTPException(
+            422,
+            f"{spec.name} cannot be rendered as {format!r}. Available: {', '.join(spec.renderers)}",
+        )
+
+    ir = ContentIR.model_validate(output.content_ir)
+    body = render(ir, format, include_citations=citations)
+    filename = f"{output.type}_{output.language}.{EXTENSIONS[format]}"
+
+    return Response(
+        content=body,
+        media_type=MEDIA_TYPES[format],
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

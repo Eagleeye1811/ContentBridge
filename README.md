@@ -117,11 +117,38 @@ frontend/src/
 | 0 | Scaffold, schema, auth, health | **done** |
 | 1 | Ingestion + traceability | **done** |
 | 2 | RAG + Source of Truth | **done** |
-| 3 | One pipeline, Advisory + Summary | next |
-| 4 | Verification + consistency matrix | |
+| 3 | One pipeline, Advisory + Summary | **done** |
+| 4 | Verification + consistency matrix | next |
 | 5 | Remaining outputs + pptx/docx renderers | |
 | 6 | Audience profiles + Hindi/Marathi | |
 | 7 | Review, approval gate, demo polish | |
+
+### What Phase 3 gives you
+
+The shared spine is real. `generate()` is one function; Advisory and Executive
+Summary differ only by a `FormatSpec` — allowed node kinds, a prompt fragment,
+a node budget. Adding an output type is a config file.
+
+- **ContentIR** is the format-neutral node tree the model emits. It never emits
+  Markdown, DOCX or PPTX; renderers are pure functions of ContentIR, which is
+  what makes export reproducible and editing uniform.
+- **Facts are labelled `f0..fN`** in the prompt, exactly as blocks are during
+  extraction. The model never sees a real UUID, so it cannot invent a valid
+  citation.
+- **Three hard rules are enforced in code, not prose.** Disallowed node kinds,
+  invented citations and uncited non-heading nodes are rejected and retried
+  once with the violation named. Anything still wrong is dropped — an
+  unattributable claim never reaches a reviewer.
+- **Reviewers edit ContentIR**, not rendered text, so every export stays
+  consistent. Any edit clears the verification state.
+
+```
+POST /documents/{id}/outputs  {"types":["advisory","summary"],
+                               "audience":"officer","languages":["en"]}
+   -> one job, N outputs, all through the same generator
+GET  /outputs/{id}            -> ContentIR + every cited fact, inline
+GET  /outputs/{id}/export?format=markdown
+```
 
 ### What Phase 2 gives you
 

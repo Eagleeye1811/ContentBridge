@@ -274,3 +274,116 @@ async def extract_only(document_id: uuid.UUID, job_id: uuid.UUID) -> None:
             log.exception("extraction failed for document %s", document_id)
             await db.rollback()
             await mark(db, job, status="failed", stage="failed", error=str(exc))
+
+
+# --------------------------------------------------------------------------
+# Generation: one pipeline, many outputs
+# --------------------------------------------------------------------------
+
+
+async def generate_outputs(
+    document_id: uuid.UUID,
+    job_id: uuid.UUID,
+    requests: list[dict],
+) -> None:
+    """Produce one Output row per (type, audience, language) combination.
+
+    Every combination goes through the same generator; only the FormatSpec and
+    the audience fragment differ. A failure on one combination does not abort
+    the rest -- partial results are more useful than none.
+    """
+    from sqlalchemy.orm import selectinload
+
+    from app.models import FactSheet, Output
+    from app.services.generation.audiences import get_audience
+    from app.services.generation.formats import get_format
+    from app.services.generation.generator import generate
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        document = await db.get(Document, document_id)
+        if job is None or document is None:
+            log.error("generate: job %s or document %s vanished", job_id, document_id)
+            return
+
+        try:
+            await mark(db, job, status="running", stage="loading facts", progress=0.05)
+
+            sheet = await db.scalar(
+                select(FactSheet)
+                .where(FactSheet.document_id == document_id, FactSheet.is_current.is_(True))
+                .options(selectinload(FactSheet.facts))
+                .order_by(FactSheet.version.desc())
+            )
+            if sheet is None or not sheet.facts:
+                raise RuntimeError("No current Source of Truth. Run extraction first.")
+
+            facts = sorted(sheet.facts, key=lambda f: (f.type, f.key))
+            created, failures = [], []
+
+            for i, req in enumerate(requests):
+                label = f"{req['type']}/{req['audience']}/{req['language']}"
+                await mark(
+                    db,
+                    job,
+                    stage=f"generating {label}",
+                    progress=0.05 + 0.9 * (i / max(1, len(requests))),
+                )
+                try:
+                    result = await generate(
+                        facts=facts,
+                        spec=get_format(req["type"]),
+                        audience=get_audience(req["audience"]),
+                        language=req["language"],
+                        source_name=document.filename,
+                    )
+                except Exception as exc:  # noqa: BLE001 - reported per combination
+                    log.exception("generation failed for %s", label)
+                    failures.append(f"{label}: {exc}")
+                    continue
+
+                previous = await db.scalar(
+                    select(Output)
+                    .where(
+                        Output.document_id == document_id,
+                        Output.type == req["type"],
+                        Output.audience == req["audience"],
+                        Output.language == req["language"],
+                    )
+                    .order_by(Output.version.desc())
+                )
+                output = Output(
+                    document_id=document_id,
+                    fact_sheet_id=sheet.id,
+                    type=req["type"],
+                    audience=req["audience"],
+                    language=req["language"],
+                    status="draft",
+                    content_ir=result.content_ir.model_dump(mode="json"),
+                    version=(previous.version + 1) if previous else 1,
+                    model=result.model,
+                )
+                db.add(output)
+                await db.flush()
+                created.append(str(output.id))
+                if result.dropped_citations:
+                    log.warning("%s dropped: %s", label, "; ".join(result.dropped_citations))
+
+            await db.commit()
+
+            if not created:
+                raise RuntimeError("; ".join(failures) or "No outputs were generated")
+
+            await mark(
+                db,
+                job,
+                status="succeeded",
+                stage="done",
+                progress=1.0,
+                result={"outputs": created, "failures": failures},
+            )
+
+        except Exception as exc:  # noqa: BLE001 - surfaced through the job row
+            log.exception("generation job failed for document %s", document_id)
+            await db.rollback()
+            await mark(db, job, status="failed", stage="failed", error=str(exc))
