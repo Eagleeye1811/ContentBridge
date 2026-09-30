@@ -278,3 +278,54 @@ export interface ConsistencyReport {
   unsourced: Unsourced[]
   issues: Issue[]
 }
+
+export interface ReviewEntry {
+  id: string
+  output_id: string
+  user_id: string | null
+  actor_name: string
+  actor_role: string
+  action: 'comment' | 'edit' | 'approve' | 'reject'
+  note: string | null
+  created_at: string
+}
+
+export interface ApprovalState {
+  output_id: string
+  status: string
+  trust_score: number | null
+  verified_at: string | null
+  approved_by: string | null
+  approved_at: string | null
+  approver_name: string | null
+  blocking_reasons: string[]
+  can_submit: boolean
+  can_approve: boolean
+  can_reject: boolean
+  history: ReviewEntry[]
+}
+
+export interface PendingOutput {
+  id: string
+  document_id: string
+  document_name: string
+  type: string
+  audience: string
+  language: string
+  version: number
+  status: string
+  trust_score: number | null
+  title: string
+  submitted_at: string | null
+}
+
+export interface AuditEntry {
+  id: string
+  actor_id: string | null
+  actor_name: string
+  entity: string
+  entity_id: string | null
+  action: string
+  payload: Record<string, unknown> | null
+  created_at: string
+}

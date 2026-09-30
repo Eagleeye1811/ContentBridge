@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import ContentIRView from '@/components/ContentIRView'
+import ApprovalPanel from '@/components/ApprovalPanel'
 import ExportBar from '@/components/ExportBar'
 import VerificationPanel from '@/components/VerificationPanel'
 import type { ContentIR, Fact, OutputDetail } from '@/types/api'
@@ -117,6 +118,7 @@ export default function OutputReview() {
         </div>
 
         <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+          <ApprovalPanel outputId={id} onChanged={load} />
           <VerificationPanel
             outputId={id}
             onVerified={load}

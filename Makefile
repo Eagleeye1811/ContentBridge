@@ -1,4 +1,4 @@
-.PHONY: up down logs migrate revision seed api web test fmt
+.PHONY: up down logs migrate revision seed demo api web test fmt
 
 up:            ## Start the whole stack
 	docker compose up --build
@@ -14,6 +14,9 @@ migrate:       ## Apply migrations (inside the api container)
 
 revision:      ## make revision m="add widgets"
 	docker compose exec api alembic revision --autogenerate -m "$(m)"
+
+demo:          ## Run the end-to-end walkthrough against a running API
+	cd backend && .venv/bin/python ../scripts/demo.py
 
 seed:          ## Create demo editor + approver accounts
 	docker compose exec api python -m app.seed

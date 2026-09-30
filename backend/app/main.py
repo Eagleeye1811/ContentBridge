@@ -5,7 +5,16 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, documents, facts, health, jobs, outputs, verification
+from app.api import (
+    auth,
+    documents,
+    facts,
+    health,
+    jobs,
+    outputs,
+    review,
+    verification,
+)
 from app.config import settings
 
 logging.basicConfig(level=settings.log_level)
@@ -36,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(facts.router)
     app.include_router(outputs.router)
     app.include_router(verification.router)
+    app.include_router(review.router)
     return app
 
 

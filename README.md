@@ -121,7 +121,43 @@ frontend/src/
 | 4 | Verification + consistency matrix | **done** |
 | 5 | Remaining outputs + pptx/docx renderers | **done** |
 | 6 | Audience profiles + Hindi/Marathi | **done** |
-| 7 | Review, approval gate, demo polish | next |
+| 7 | Review, approval gate, demo polish | **done** |
+
+### What Phase 7 gives you
+
+The human step, with teeth.
+
+```
+Generate -> Verify -> Submit -> Approve -> Export
+```
+
+- **The gate refuses, and says why.** An output with a contradicted claim or an
+  unresolved high-severity mismatch cannot be approved; the reason is returned
+  rather than implied. An unverified output is blocked too, since it has no
+  claims to judge and would otherwise pass vacuously.
+- **Separation of duties.** Only an `approver` may approve, and not even their
+  own work can skip the queue. An approver can see anything submitted for
+  review, which is what makes two roles mean anything.
+- **Rejection always stays available.** Refusing bad work is never gated on the
+  work being good — but a rejection needs a reason the editor can act on.
+- **Editing invalidates verification completely.** The trust score, the
+  `verified_at` stamp and the stored claims are all cleared, so nothing can be
+  approved on evidence describing text that no longer exists.
+- **Approved outputs are locked.** Regenerate to make a new version.
+- Every action lands in an audit trail: who, what, when.
+
+The approval rules live in `app/services/review/policy.py` as pure functions,
+tested exhaustively across every state and role rather than sampled.
+
+### Demo
+
+```bash
+make demo        # or: python scripts/demo.py --types advisory,summary --languages en,hi
+```
+
+Upload → facts → generate → verify → consistency → submit → approve → export →
+audit, printed step by step. It exits non-zero if any step fails, so it doubles
+as an integration check.
 
 ### What Phase 6 gives you
 

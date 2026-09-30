@@ -13,7 +13,10 @@ import type {
   GenerateRequest,
   Output,
   OutputDetail,
+  ApprovalState,
+  AuditEntry,
   Issue,
+  PendingOutput,
   SearchHit,
   TokenResponse,
   VerificationSummary,
@@ -139,6 +142,25 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status, note }),
     }),
+
+  approvalState: (id: string) => request<ApprovalState>(`/outputs/${id}/approval`),
+  submitForReview: (id: string, note?: string) =>
+    request<ApprovalState>(`/outputs/${id}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  approveOutput: (id: string, note?: string) =>
+    request<ApprovalState>(`/outputs/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  rejectOutput: (id: string, note: string) =>
+    request<ApprovalState>(`/outputs/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  reviewQueue: () => request<PendingOutput[]>('/review-queue'),
+  audit: (documentId: string) => request<AuditEntry[]>(`/documents/${documentId}/audit`),
 
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
 

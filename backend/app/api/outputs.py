@@ -4,12 +4,22 @@ import uuid
 
 import anyio
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.facts import _serialize as serialize_sheet
-from app.models import AuditLog, Document, DocumentBlock, Export, Fact, FactSheet, Job, Output
+from app.models import (
+    AuditLog,
+    Document,
+    DocumentBlock,
+    Export,
+    Fact,
+    FactSheet,
+    Job,
+    Output,
+    OutputClaim,
+)
 from app.pipeline.stages import generate_outputs
 from app.schemas.content_ir import ContentIR
 from app.schemas.documents import JobOut
@@ -179,9 +189,15 @@ async def update_output(
         raise HTTPException(409, "Approved outputs cannot be edited. Regenerate a new version.")
 
     output.content_ir = body.content_ir.model_dump(mode="json")
-    # Any edit invalidates a prior verification.
+
+    # Any edit invalidates the prior verification completely. Clearing the
+    # score but leaving `verified_at` and the claim rows in place would let an
+    # edited output be submitted, and approved, on evidence that describes text
+    # which no longer exists.
     output.status = "draft"
     output.trust_score = None
+    output.verified_at = None
+    await db.execute(delete(OutputClaim).where(OutputClaim.output_id == output.id))
     db.add(AuditLog(actor_id=user.id, entity="output", entity_id=output.id, action="edit"))
     await db.commit()
 
