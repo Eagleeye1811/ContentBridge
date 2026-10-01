@@ -1,11 +1,40 @@
-export type Role = 'editor' | 'approver'
+export type Role = 'editor' | 'approver' | 'admin'
 
 export interface User {
   id: string
   email: string
   name: string
   role: Role
+  is_active: boolean
   created_at: string
+  job_role: { id: string; name: string } | null
+  /** Output types this person may create, decided by their job role. */
+  allowed_types: string[]
+}
+
+export interface JobRole {
+  id: string
+  name: string
+  description: string
+  allowed_types: string[]
+  employee_count: number
+}
+
+export interface EmployeeInput {
+  name: string
+  email: string
+  password: string
+  job_role_id: string | null
+  role: Role
+}
+
+export interface EmployeeUpdate {
+  name?: string
+  job_role_id?: string | null
+  clear_job_role?: boolean
+  role?: Role
+  is_active?: boolean
+  password?: string
 }
 
 export interface TokenResponse {

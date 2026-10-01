@@ -32,7 +32,9 @@ from app.db import Base
 
 # --- enumerations (stored as VARCHAR + CHECK, so migrations stay painless) ---
 
-UserRole = Enum("editor", "approver", name="user_role", native_enum=False)
+# Access level. Separate from the job role, which decides which outputs a
+# person may create; "admin" manages employees and roles.
+UserRole = Enum("editor", "approver", "admin", name="user_role", native_enum=False)
 DocumentStatus = Enum(
     "uploaded",
     "parsing",
@@ -76,6 +78,7 @@ OutputType = Enum(
     "summary",
     "email",
     "linkedin",
+    "twitter",
     "press_release",
     "report",
     "infographic",
@@ -133,6 +136,18 @@ class TimestampMixin:
 # --------------------------------------------------------------------------
 
 
+class JobRole(Base, TimestampMixin):
+    """A job in the organisation and the output types it may create."""
+
+    __tablename__ = "job_roles"
+
+    id: Mapped[uuid.UUID] = _pk()
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Output type keys, e.g. ["linkedin", "twitter"].
+    allowed_types: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+
+
 class User(Base, TimestampMixin):
     __tablename__ = "users"
 
@@ -142,6 +157,11 @@ class User(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[str] = mapped_column(UserRole, nullable=False, default="editor")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # None means no job role yet: the person may create every output type.
+    job_role_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("job_roles.id", ondelete="SET NULL"), index=True
+    )
+    job_role: Mapped[JobRole | None] = relationship(lazy="joined")
 
 
 # --------------------------------------------------------------------------

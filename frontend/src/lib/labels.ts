@@ -11,6 +11,7 @@ const FORMAT_LABELS: Record<string, string> = {
   email: 'Official Email',
   linkedin: 'LinkedIn Post',
   social: 'LinkedIn Post',
+  twitter: 'Twitter/X Post',
   press_release: 'Press Release',
   report: 'Report',
   infographic: 'Infographic',

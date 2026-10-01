@@ -23,6 +23,9 @@ import type {
   VerificationSummary,
   UploadResponse,
   User,
+  JobRole,
+  EmployeeInput,
+  EmployeeUpdate,
 } from '@/types/api'
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -166,6 +169,19 @@ export const api = {
   audit: (documentId: string) => request<AuditEntry[]>(`/documents/${documentId}/audit`),
 
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
+
+  // Employee management (administrators only)
+  listRoles: () => request<JobRole[]>('/admin/roles'),
+  createRole: (body: Omit<JobRole, 'id' | 'employee_count'>) =>
+    request<JobRole>('/admin/roles', { method: 'POST', body: JSON.stringify(body) }),
+  updateRole: (id: string, body: Partial<Omit<JobRole, 'id' | 'employee_count'>>) =>
+    request<JobRole>(`/admin/roles/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteRole: (id: string) => request<void>(`/admin/roles/${id}`, { method: 'DELETE' }),
+  listEmployees: () => request<User[]>('/admin/employees'),
+  createEmployee: (body: EmployeeInput) =>
+    request<User>('/admin/employees', { method: 'POST', body: JSON.stringify(body) }),
+  updateEmployee: (id: string, body: EmployeeUpdate) =>
+    request<User>(`/admin/employees/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   /**
    * Stream job progress. EventSource cannot send an Authorization header, so

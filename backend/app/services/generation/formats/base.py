@@ -50,6 +50,9 @@ class FormatSpec:
     renderers: tuple[str, ...]
     max_nodes: int = 40
     options: tuple[FormatOption, ...] = ()
+    # Longest a single node may be, in characters (a post's lines joined).
+    # 0 means no limit. X posts must fit in 280.
+    max_node_chars: int = 0
     # Paragraphs up to this many words may skip citations: an email's greeting
     # and sign-off state nothing. 0 means every paragraph must cite a fact.
     uncited_max_words: int = 0

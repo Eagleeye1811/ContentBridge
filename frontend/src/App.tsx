@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth'
+import Employees from '@/pages/Employees'
 import FormatPage from '@/pages/FormatPage'
 import Login from '@/pages/Login'
 import OutputReview from '@/pages/OutputReview'
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/outputs" element={<Outputs />} />
         <Route path="/formats/:format" element={<FormatPage />} />
         <Route path="/outputs/:id" element={<OutputReview />} />
+        <Route path="/employees" element={<Employees />} />
         <Route path="/approvals" element={<Navigate to="/outputs" replace />} />
         <Route path="/documents/:id/*" element={<LegacyDocument />} />
       </Route>

@@ -96,6 +96,8 @@ def render(
 ) -> str:
     # A post is pasted as-is, so it has no document title; an email's title is
     # its subject line.
+    if output_type == "twitter":
+        return _thread(ir)
     if output_type in {"linkedin", "social"}:
         parts: list[str] = []
     elif output_type == "email":
@@ -120,3 +122,11 @@ def render(
         parts.append("")
 
     return "\n".join(parts).rstrip() + "\n"
+
+
+def _thread(ir: ContentIR) -> str:
+    """X posts: one block per post, numbered when they form a thread."""
+    posts = ["\n".join(i for i in (n.items or []) if i) for n in ir.nodes if n.items]
+    if len(posts) > 1:
+        posts = [f"{p}\n{k}/{len(posts)}" for k, p in enumerate(posts, start=1)]
+    return "\n\n---\n\n".join(posts).rstrip() + "\n"

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
+    admin,
     auth,
     documents,
     facts,
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(outputs.router)
     app.include_router(verification.router)
     app.include_router(review.router)
+    app.include_router(admin.router)
     return app
 
 

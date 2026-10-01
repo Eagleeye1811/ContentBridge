@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom'
 import { api } from '@/api/client'
+import { useAuth } from '@/lib/auth'
 import { Badge } from '@/components/ui'
 import { Icon } from '@/lib/icons'
 import { FORMAT_GROUPS } from '@/lib/formats'
@@ -34,6 +35,7 @@ export function latestOutputs(outputs: Output[]): Output[] {
 
 export default function Workspace() {
   const { id = '' } = useParams()
+  const { user } = useAuth()
   const [doc, setDoc] = useState<Doc | null>(null)
   const [blocks, setBlocks] = useState<Block[]>([])
   const [catalog, setCatalog] = useState<Catalog | null>(null)
@@ -100,10 +102,14 @@ export default function Workspace() {
             <Item to={`/sources/${id}`} end icon="document" label="Document" />
             <Item to={`/sources/${id}/facts`} icon="facts" label="Key facts" />
           </Group>
-          {FORMAT_GROUPS.map((g) => (
+          {FORMAT_GROUPS.map((g) => ({
+            ...g,
+            keys: g.keys.filter((k) => names.has(k) && (user?.allowed_types ?? []).includes(k)),
+          }))
+            .filter((g) => g.keys.length > 0)
+            .map((g) => (
             <Group key={g.label} label={g.label}>
               {g.keys
-                .filter((k) => names.has(k))
                 .map((k) => (
                   <Item
                     key={k}

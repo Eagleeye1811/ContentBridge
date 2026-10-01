@@ -1,7 +1,7 @@
 /** Output types in the order they appear in menus, grouped for the navbar. */
 export const FORMAT_GROUPS: { label: string; keys: string[] }[] = [
   { label: 'Documents', keys: ['advisory', 'summary', 'report', 'email', 'press_release'] },
-  { label: 'Presentation & media', keys: ['ppt', 'linkedin', 'infographic', 'video'] },
+  { label: 'Presentation & media', keys: ['ppt', 'linkedin', 'twitter', 'infographic', 'video'] },
 ]
 
 export const FORMAT_KEYS = FORMAT_GROUPS.flatMap((g) => g.keys)

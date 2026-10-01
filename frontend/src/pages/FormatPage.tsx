@@ -3,7 +3,8 @@ import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import CreateForm from '@/components/CreateForm'
 import OutputGrid from '@/components/OutputGrid'
-import { Button, Empty } from '@/components/ui'
+import { Button, Empty, Notice } from '@/components/ui'
+import { useAuth } from '@/lib/auth'
 import { FORMAT_KEYS, latestOnly, typeOf } from '@/lib/formats'
 import { Icon } from '@/lib/icons'
 import type { Catalog, Doc, OutputListItem } from '@/types/api'
@@ -15,6 +16,7 @@ import type { Catalog, Doc, OutputListItem } from '@/types/api'
 export default function FormatPage() {
   const { format: key = '' } = useParams()
   const [params] = useSearchParams()
+  const { user } = useAuth()
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [sources, setSources] = useState<Doc[] | null>(null)
   const [outputs, setOutputs] = useState<OutputListItem[] | null>(null)
@@ -48,10 +50,11 @@ export default function FormatPage() {
   const format = catalog.formats.find((f) => f.key === key)
   if (!format) return <Navigate to="/outputs" replace />
 
+  const permitted = user?.allowed_types.includes(format.key) ?? false
   const name = format.name.toLowerCase()
   const plural = name.endsWith('y') ? `${name.slice(0, -1)}ies` : `${name}s`
   // Open by default when nothing exists yet, or when a source was handed over.
-  const open = creating ?? (mine.length === 0 || params.has('source'))
+  const open = permitted && (creating ?? (mine.length === 0 || params.has('source')))
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -63,13 +66,21 @@ export default function FormatPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{format.name}</h1>
           <p className="text-sm text-ink-600">{format.description}</p>
         </div>
-        {!open && (
+        {permitted && !open && (
           <Button onClick={() => setCreating(true)}>
             <Icon name="plus" />
             New {name}
           </Button>
         )}
       </div>
+
+      {!permitted && (
+        <Notice tone="warn">
+          {format.name} is not part of your role
+          {user?.job_role ? ` (${user.job_role.name})` : ''}. Ask your administrator if you need
+          it.
+        </Notice>
+      )}
 
       {open && (
         <CreateForm

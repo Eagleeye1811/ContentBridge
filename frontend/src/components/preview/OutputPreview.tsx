@@ -4,6 +4,7 @@ import EmailPreview from '@/components/preview/EmailPreview'
 import InfographicPreview from '@/components/preview/InfographicPreview'
 import LinkedInPreview from '@/components/preview/LinkedInPreview'
 import PressReleasePreview from '@/components/preview/PressReleasePreview'
+import TwitterPreview from '@/components/preview/TwitterPreview'
 import VideoPreview from '@/components/preview/VideoPreview'
 import type { ContentIR } from '@/types/api'
 
@@ -37,6 +38,8 @@ export default function OutputPreview({
     case 'linkedin':
     case 'social':
       return <LinkedInPreview ir={ir} />
+    case 'twitter':
+      return <TwitterPreview ir={ir} />
     case 'infographic':
       return <InfographicPreview ir={ir} shape={options.shape} />
     case 'video':

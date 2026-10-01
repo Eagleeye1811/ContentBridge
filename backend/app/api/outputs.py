@@ -36,6 +36,7 @@ from app.schemas.outputs import (
     OutputListItem,
     OutputOut,
 )
+from app.services.access import can_create
 from app.services.generation.audiences import AUDIENCES, LANGUAGES
 from app.services.generation.controls import (
     DEFAULT_CONTROLS,
@@ -147,6 +148,11 @@ async def create_outputs(
             raise HTTPException(422, str(exc)) from exc
         if canonical not in types:
             types.append(canonical)
+    refused = [t for t in types if not can_create(user, t)]
+    if refused:
+        role = user.job_role.name if user.job_role else "your role"
+        names = ", ".join(get_format(t).name for t in refused)
+        raise HTTPException(403, f"{role} cannot create: {names}.")
     if body.audience is not None and body.audience not in AUDIENCES:
         raise HTTPException(422, f"Unknown audience {body.audience!r}")
     unknown_langs = [x for x in body.languages if x not in LANGUAGES]
@@ -303,6 +309,8 @@ async def regenerate(
     output_id: uuid.UUID, db: DbSession, user: CurrentUser, background: BackgroundTasks
 ) -> JobOut:
     output = await _owned_output(db, user, output_id)
+    if not can_create(user, get_format(output.type).key):
+        raise HTTPException(403, f"Your role cannot create {get_format(output.type).name}.")
     if not llm_available():
         raise HTTPException(
             503, "Writing is not available: no AI model is configured on the server."

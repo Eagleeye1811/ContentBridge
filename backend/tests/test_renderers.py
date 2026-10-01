@@ -77,13 +77,14 @@ FULL_KWARGS = dict(include_citations=True, citations=CITATIONS, source_name="inc
 # --- format specs ----------------------------------------------------------
 
 
-def test_all_nine_output_types_are_registered():
+def test_all_ten_output_types_are_registered():
     assert set(FORMATS) == {
         "advisory",
         "ppt",
         "summary",
         "email",
         "linkedin",
+        "twitter",
         "press_release",
         "report",
         "infographic",

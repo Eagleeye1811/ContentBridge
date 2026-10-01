@@ -99,6 +99,13 @@ def _validate(ir: ContentIR, spec: FormatSpec, labels: set[str], language: str =
                 f"Node {node.id!r} cited {', '.join(repr(u) for u in unknown)}, which "
                 "do not exist. Cite only the labels listed in FACTS."
             )
+        if spec.max_node_chars:
+            length = len("\n".join(iter_text(node)))
+            if length > spec.max_node_chars:
+                problems.append(
+                    f"Node {node.id!r} is {length} characters; each must be at most "
+                    f"{spec.max_node_chars}. Shorten it."
+                )
         required = REQUIRED_CONTENT.get(node.kind)
         if required and _content_count(node, required[0]) < required[1]:
             field_name, minimum = required

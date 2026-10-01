@@ -11,6 +11,7 @@ from app.services.generation.formats import (
     press_release,
     report,
     summary,
+    twitter,
     video,
 )
 from app.services.generation.formats.base import FormatSpec
@@ -24,6 +25,7 @@ FORMATS: dict[str, FormatSpec] = {
         summary.SPEC,
         email.SPEC,
         linkedin.SPEC,
+        twitter.SPEC,
         press_release.SPEC,
         report.SPEC,
         infographic.SPEC,

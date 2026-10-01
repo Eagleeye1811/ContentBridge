@@ -9,6 +9,8 @@ const PATHS: Record<string, string> = {
   press_release: 'M5 4h12v16H5a2 2 0 0 1-2-2V8h2M17 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2M8 8h6M8 12h6M8 16h4',
   report: 'M6 3h12v18H6zM9 15v2M12 11v6M15 13v4M9 7h6',
   infographic: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  twitter: 'M4 4l16 16M20 4L4 20',
+  users: 'M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-1a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
   video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
   // navigation
   document: 'M6 3h9l5 5v13H6zM14 3v6h6',

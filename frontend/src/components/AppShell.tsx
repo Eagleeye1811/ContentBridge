@@ -13,7 +13,7 @@ const MENUS: { label: string; icon: string; keys: string[] }[] = [
     icon: 'summary',
     keys: ['advisory', 'summary', 'report', 'email', 'press_release'],
   },
-  { label: 'Media', icon: 'ppt', keys: ['ppt', 'linkedin', 'infographic', 'video'] },
+  { label: 'Media', icon: 'ppt', keys: ['ppt', 'linkedin', 'twitter', 'infographic', 'video'] },
 ]
 
 const itemClass = (active: boolean) =>
@@ -24,6 +24,11 @@ const itemClass = (active: boolean) =>
 export default function AppShell() {
   const { user, logout } = useAuth()
   const counts = useOutputCounts()
+  // Each person sees only the outputs their job role allows.
+  const allowed = new Set(user?.allowed_types ?? [])
+  const menus = MENUS.map((m) => ({ ...m, keys: m.keys.filter((k) => allowed.has(k)) })).filter(
+    (m) => m.keys.length > 0,
+  )
 
   return (
     <div className="flex min-h-full flex-col">
@@ -41,7 +46,7 @@ export default function AppShell() {
               <Icon name="sources" />
               Sources
             </NavLink>
-            {MENUS.map((m) => (
+            {menus.map((m) => (
               <Menu key={m.label} label={m.label} icon={m.icon} keys={m.keys} counts={counts} />
             ))}
             <NavLink to="/outputs" end className={({ isActive }) => itemClass(isActive)}>
@@ -49,6 +54,12 @@ export default function AppShell() {
               <span className="hidden md:inline">All outputs</span>
               {counts.all ? <Count n={counts.all} /> : null}
             </NavLink>
+            {user?.role === 'admin' && (
+              <NavLink to="/employees" className={({ isActive }) => itemClass(isActive)}>
+                <Icon name="users" />
+                <span className="hidden md:inline">Employees</span>
+              </NavLink>
+            )}
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -58,7 +69,9 @@ export default function AppShell() {
               </span>
               <span className="hidden leading-tight sm:block">
                 <span className="block text-xs font-medium">{user?.name}</span>
-                <span className="block text-[11px] capitalize text-ink-400">{user?.role}</span>
+                <span className="block text-[11px] text-ink-400">
+                  {user?.role === 'admin' ? 'Administrator' : (user?.job_role?.name ?? 'All outputs')}
+                </span>
               </span>
             </div>
             <button

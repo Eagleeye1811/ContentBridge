@@ -2,33 +2,29 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
-from app.models import AuditLog, User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
-from app.security import create_access_token, hash_password, verify_password
+from app.models import User
+from app.schemas.auth import JobRoleBrief, LoginRequest, TokenResponse, UserOut
+from app.security import create_access_token, verify_password
+from app.services.access import allowed_types
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Accounts are created by administrators on the Employees page; there is no
+# public sign-up.
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, db: DbSession) -> TokenResponse:
-    existing = await db.scalar(select(User).where(User.email == body.email.lower()))
-    if existing:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
 
-    user = User(
-        email=body.email.lower(),
-        password_hash=hash_password(body.password),
-        name=body.name,
-        role=body.role,
-    )
-    db.add(user)
-    await db.flush()
-    db.add(AuditLog(actor_id=user.id, entity="user", entity_id=user.id, action="register"))
-    await db.flush()
-
-    return TokenResponse(
-        access_token=create_access_token(user.id, user.role),
-        user=UserOut.model_validate(user),
+def user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        job_role=JobRoleBrief(id=user.job_role.id, name=user.job_role.name)
+        if user.job_role
+        else None,
+        allowed_types=allowed_types(user),
     )
 
 
@@ -38,14 +34,16 @@ async def login(body: LoginRequest, db: DbSession) -> TokenResponse:
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
     if not user.is_active:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Account disabled")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This account is disabled. Contact your administrator."
+        )
 
     return TokenResponse(
         access_token=create_access_token(user.id, user.role),
-        user=UserOut.model_validate(user),
+        user=user_out(user),
     )
 
 
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentUser) -> UserOut:
-    return UserOut.model_validate(user)
+    return user_out(user)

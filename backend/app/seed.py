@@ -1,4 +1,7 @@
-"""Create demo accounts: `python -m app.seed`."""
+"""Create the starting accounts: `python -m app.seed`.
+
+The administrator adds every other employee from the Employees page.
+"""
 
 import asyncio
 
@@ -9,6 +12,7 @@ from app.models import User
 from app.security import hash_password
 
 DEMO_USERS = [
+    ("admin@contentbridge.io", "Administrator", "admin"),
     ("editor@contentbridge.io", "Editor", "editor"),
     ("approver@contentbridge.io", "Approver", "approver"),
 ]
@@ -31,7 +35,7 @@ async def main() -> None:
             )
             print(f"  + {email} ({role})")
         await db.commit()
-    print(f"\nPassword for both: {DEMO_PASSWORD}")
+    print(f"\nPassword for these accounts: {DEMO_PASSWORD} (change it before sharing)")
 
 
 if __name__ == "__main__":
