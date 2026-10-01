@@ -1,14 +1,24 @@
 import { useState } from 'react'
 import { api, ApiError } from '@/api/client'
+import { Button } from '@/components/ui'
 import type { Evidence, Fact } from '@/types/api'
 
+export const FACT_TYPE_LABEL: Record<Fact['type'], string> = {
+  metric: 'Number',
+  date: 'Date',
+  entity: 'Name',
+  finding: 'Finding',
+  recommendation: 'Recommendation',
+  risk: 'Risk',
+}
+
 const TYPE_TONE: Record<Fact['type'], string> = {
-  metric: 'bg-blue-100 text-blue-700',
-  date: 'bg-violet-100 text-violet-700',
-  entity: 'bg-teal-100 text-teal-700',
-  finding: 'bg-amber-100 text-amber-700',
-  recommendation: 'bg-emerald-100 text-emerald-700',
-  risk: 'bg-red-100 text-red-700',
+  metric: 'bg-blue-50 text-blue-700',
+  date: 'bg-violet-50 text-violet-700',
+  entity: 'bg-teal-50 text-teal-700',
+  finding: 'bg-amber-50 text-amber-700',
+  recommendation: 'bg-emerald-50 text-emerald-700',
+  risk: 'bg-red-50 text-red-700',
 }
 
 interface Props {
@@ -42,35 +52,28 @@ export default function FactCard({ fact, selected, onSelectEvidence, onUpdated }
     }
   }
 
+  const pages = [...new Map(fact.evidence.map((e) => [e.page_no, e])).values()]
+
   return (
     <div
-      className={`rounded-lg border p-3 transition ${
+      className={`rounded-xl border p-4 transition ${
         selected ? 'border-amber-400 bg-amber-50' : 'border-ink-200 bg-white'
       }`}
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${TYPE_TONE[fact.type]}`}>
-          {fact.type}
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TYPE_TONE[fact.type]}`}>
+          {FACT_TYPE_LABEL[fact.type]}
         </span>
-        {fact.canonical_value && (
-          <span className="rounded bg-ink-900 px-1.5 py-0.5 font-mono text-xs text-white">
-            {fact.canonical_value}
-            {fact.unit === 'percent' ? '%' : ''}
-          </span>
-        )}
-        {fact.unit && fact.unit !== 'percent' && (
-          <span className="text-xs text-ink-400">{fact.unit}</span>
-        )}
         {fact.edited_by_human && (
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700">
-            edited
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+            Corrected
           </span>
         )}
         <button
           onClick={() => setEditing((v) => !v)}
-          className="ml-auto text-xs text-ink-400 hover:text-ink-900"
+          className="ml-auto text-xs font-medium text-ink-400 hover:text-ink-900"
         >
-          {editing ? 'Cancel' : 'Edit'}
+          {editing ? 'Cancel' : 'Correct'}
         </button>
       </div>
 
@@ -80,44 +83,43 @@ export default function FactCard({ fact, selected, onSelectEvidence, onUpdated }
             value={statement}
             onChange={(e) => setStatement(e.target.value)}
             rows={3}
-            className="w-full rounded-lg border border-ink-200 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+            className="w-full rounded-lg border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
           />
+          {fact.canonical_value !== null && (
+            <label className="flex items-center gap-2 text-xs text-ink-600">
+              Main figure
+              <input
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="w-36 rounded-lg border border-ink-200 px-2 py-1 text-sm outline-none focus:border-brand-500"
+              />
+            </label>
+          )}
           <div className="flex items-center gap-2">
-            <label className="text-xs text-ink-600">Canonical value</label>
-            <input
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              className="w-32 rounded-lg border border-ink-200 px-2 py-1 font-mono text-sm outline-none focus:border-brand-500"
-            />
-            <button
-              onClick={save}
-              disabled={saving}
-              className="ml-auto rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            <Button size="sm" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save correction'}
+            </Button>
+            {error && <span className="text-xs text-red-700">{error}</span>}
           </div>
-          <p className="text-xs text-ink-400">
-            Correcting a fact corrects every output generated from it afterwards.
-          </p>
-          {error && <p className="text-xs text-red-700">{error}</p>}
         </div>
       ) : (
-        <p className="mt-1.5 text-sm">{fact.statement}</p>
+        <p className="mt-2 text-sm leading-relaxed">{fact.statement}</p>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-1">
-        {fact.evidence.map((e) => (
-          <button
-            key={e.block_id}
-            onClick={() => onSelectEvidence(e)}
-            title={e.quote}
-            className="rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-xs text-ink-600 hover:border-brand-500 hover:text-brand-600"
-          >
-            p{e.page_no} · {e.section_path.split(' > ').pop() || 'source'}
-          </button>
-        ))}
-      </div>
+      {pages.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1">
+          {pages.map((e) => (
+            <button
+              key={e.block_id}
+              onClick={() => onSelectEvidence(e)}
+              title={e.quote}
+              className="rounded-full border border-ink-200 px-2 py-0.5 text-xs text-ink-600 hover:border-brand-500 hover:text-brand-600"
+            >
+              Page {e.page_no}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

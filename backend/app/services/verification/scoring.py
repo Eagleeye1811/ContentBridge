@@ -29,11 +29,12 @@ def blocking_reasons(verdicts: Sequence[str], open_high_issues: int = 0) -> list
     contradicted = sum(1 for v in verdicts if v == "contradicted")
     if contradicted:
         reasons.append(
-            f"{contradicted} claim{'s' if contradicted > 1 else ''} contradicted by the source"
+            f"{contradicted} sentence{'s conflict' if contradicted > 1 else ' conflicts'} "
+            "with the source. Edit and check again."
         )
     if open_high_issues:
         reasons.append(
-            f"{open_high_issues} unresolved high-severity consistency issue"
-            f"{'s' if open_high_issues > 1 else ''}"
+            f"{open_high_issues} number{'s differ' if open_high_issues > 1 else ' differs'} "
+            "from the source. See Numbers check."
         )
     return reasons

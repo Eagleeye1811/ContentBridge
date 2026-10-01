@@ -265,7 +265,7 @@ def test_the_judge_is_told_claims_may_be_in_another_language():
 def test_audience_fragment_reaches_the_prompt():
     prompt, _ = build_prompt(
         facts=[mkfact("creds", "37 credentials.", "37")],
-        spec=get_format("social"),
+        spec=get_format("linkedin"),
         audience=get_audience("public"),
         language="en",
         source_name="doc.pdf",

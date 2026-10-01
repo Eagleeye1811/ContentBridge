@@ -32,7 +32,7 @@ async def _current_sheet(db: DbSession, document_id: uuid.UUID) -> FactSheet:
         .order_by(FactSheet.version.desc())
     )
     if sheet is None:
-        raise HTTPException(404, "No fact sheet yet. Run extraction first.")
+        raise HTTPException(404, "This source has no key facts yet.")
     return sheet
 
 

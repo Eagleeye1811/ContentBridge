@@ -75,9 +75,13 @@ OutputType = Enum(
     "ppt",
     "summary",
     "email",
-    "social",
+    "linkedin",
     "press_release",
     "report",
+    "infographic",
+    "video",
+    # Legacy key from before the LinkedIn rename; kept so old rows still load.
+    "social",
     name="output_type",
     native_enum=False,
 )
@@ -312,6 +316,8 @@ class Output(Base, TimestampMixin):
     type: Mapped[str] = mapped_column(OutputType, nullable=False)
     audience: Mapped[str] = mapped_column(Audience, nullable=False, default="officer")
     language: Mapped[str] = mapped_column(String(8), nullable=False, default="en")
+    # Tone, detail level, objective and style this output was generated with.
+    controls: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(OutputStatus, nullable=False, default="draft")
     # The format-neutral node tree every renderer consumes.
     content_ir: Mapped[dict] = mapped_column(JSONB, nullable=False)

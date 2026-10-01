@@ -50,6 +50,23 @@ ALL_KINDS = ContentIR(
             fact_ids=["fa"],
         ),
         Node(id="n7", kind="post", items=["37 credentials compromised."], fact_ids=["fa"]),
+        Node(
+            id="n8",
+            kind="panel",
+            title="Credentials exposed",
+            items=["37 credentials compromised"],
+            notes="Single big number",
+            fact_ids=["fa"],
+        ),
+        Node(
+            id="n9",
+            kind="scene",
+            title="Opening",
+            text="On 11 March 2026, 37 staff credentials were compromised.",
+            items=["37 credentials"],
+            notes="Title card over office footage",
+            fact_ids=["fa"],
+        ),
     ],
 )
 
@@ -60,15 +77,17 @@ FULL_KWARGS = dict(include_citations=True, citations=CITATIONS, source_name="inc
 # --- format specs ----------------------------------------------------------
 
 
-def test_all_seven_output_types_are_registered():
+def test_all_nine_output_types_are_registered():
     assert set(FORMATS) == {
         "advisory",
         "ppt",
         "summary",
         "email",
-        "social",
+        "linkedin",
         "press_release",
         "report",
+        "infographic",
+        "video",
     }
 
 
@@ -90,11 +109,15 @@ def test_every_declared_renderer_actually_exists(key):
 
 def test_decks_only_allow_slides_and_posts_only_allow_posts():
     assert get_format("ppt").allowed_kinds == ("slide",)
-    assert get_format("social").allowed_kinds == ("post",)
+    assert get_format("linkedin").allowed_kinds == ("post",)
 
 
-def test_social_posts_are_kept_few():
-    assert get_format("social").max_nodes <= 3
+def test_linkedin_is_a_single_post():
+    assert get_format("linkedin").max_nodes == 1
+
+
+def test_legacy_social_key_still_resolves_for_old_outputs():
+    assert get_format("social") is get_format("linkedin")
 
 
 # --- registry --------------------------------------------------------------

@@ -9,8 +9,8 @@ from app.models import User
 from app.security import hash_password
 
 DEMO_USERS = [
-    ("editor@contentbridge.io", "Demo Editor", "editor"),
-    ("approver@contentbridge.io", "Demo Approver", "approver"),
+    ("editor@contentbridge.io", "Editor", "editor"),
+    ("approver@contentbridge.io", "Approver", "approver"),
 ]
 DEMO_PASSWORD = "contentbridge"
 

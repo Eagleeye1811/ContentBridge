@@ -6,9 +6,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# PyMuPDF and onnxruntime (fastembed) need a couple of system libs.
+# PyMuPDF and onnxruntime (fastembed) need a couple of system libs; Tesseract
+# reads image sources (English, Hindi and Marathi).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential libgl1 libglib2.0-0 \
+        tesseract-ocr tesseract-ocr-hin tesseract-ocr-mar \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./

@@ -160,6 +160,18 @@ def _as_slides(ir: ContentIR) -> list[Node]:
                         fact_ids=node.fact_ids,
                     )
                 )
+        elif node.kind in {"panel", "scene"}:
+            body = list(node.items or []) if node.kind == "panel" else [node.text or ""]
+            slides.append(
+                Node(
+                    id=node.id,
+                    kind="slide",
+                    title=node.title or "",
+                    items=[b for b in body if b],
+                    notes=node.notes,
+                    fact_ids=node.fact_ids,
+                )
+            )
         elif node.kind in {"paragraph", "quote", "callout"} and node.text:
             slides.append(
                 Node(

@@ -298,6 +298,7 @@ async def generate_outputs(
     from app.models import FactSheet, Output
     from app.services.generation.audiences import get_audience
     from app.services.generation.formats import get_format
+    from app.services.generation.formats.base import apply_options
     from app.services.generation.generator import generate
 
     async with SessionLocal() as db:
@@ -333,10 +334,11 @@ async def generate_outputs(
                 try:
                     result = await generate(
                         facts=facts,
-                        spec=get_format(req["type"]),
+                        spec=apply_options(get_format(req["type"]), req.get("options")),
                         audience=get_audience(req["audience"]),
                         language=req["language"],
                         source_name=document.filename,
+                        controls=req.get("controls"),
                     )
                 except Exception as exc:  # noqa: BLE001 - reported per combination
                     log.exception("generation failed for %s", label)
@@ -359,6 +361,7 @@ async def generate_outputs(
                     type=req["type"],
                     audience=req["audience"],
                     language=req["language"],
+                    controls={**(req.get("controls") or {}), "format": req.get("options") or {}},
                     status="draft",
                     content_ir=result.content_ir.model_dump(mode="json"),
                     version=(previous.version + 1) if previous else 1,

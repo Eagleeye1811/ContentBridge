@@ -1,8 +1,9 @@
 """Prompt assembly.
 
 Exactly one prompt shape exists. An output type contributes a fragment; an
-audience contributes a fragment; a language contributes a line. Nothing else
-differs between an advisory and a press release.
+audience contributes a fragment; the communication controls (tone, detail,
+objective, style) contribute a line each; a language contributes a line.
+Nothing else differs between an advisory and a press release.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from app.services.generation.audiences import AudienceProfile, language_name
+from app.services.generation.controls import control_fragments
 from app.services.generation.formats.base import FormatSpec
 
 
@@ -68,6 +70,7 @@ def build_prompt(
     audience: AudienceProfile,
     language: str,
     source_name: str,
+    controls: dict[str, str] | None = None,
     violations: Sequence[str] = (),
 ) -> tuple[str, dict[str, FactLike]]:
     fact_block, label_map = render_facts(facts)
@@ -81,6 +84,9 @@ def build_prompt(
         spec.prompt_fragment,
         "",
         audience.prompt_fragment,
+        "",
+        *control_fragments(controls),
+        "Controls shape wording and emphasis only; the hard rules above still apply.",
         "",
         f"Allowed node kinds: {', '.join(spec.allowed_kinds)}",
         f"Maximum nodes: {spec.max_nodes}",

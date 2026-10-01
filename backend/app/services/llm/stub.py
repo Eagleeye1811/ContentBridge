@@ -122,7 +122,12 @@ def _content_ir_from_prompt(prompt: str) -> dict:
             }
         )
 
-    body_kind = next((k for k in ("paragraph", "bullets", "post", "slide") if k in allowed), None)
+    # A format's signature kind (scene, panel) wins over generic prose; no
+    # format allows both, so existing formats pick exactly what they did before.
+    body_kind = next(
+        (k for k in ("scene", "panel", "paragraph", "bullets", "post", "slide") if k in allowed),
+        None,
+    )
     if body_kind is None:
         body_kind = allowed[0] if allowed else "paragraph"
 
@@ -133,6 +138,14 @@ def _content_ir_from_prompt(prompt: str) -> dict:
         localized = localize(statement)
         if body_kind in {"bullets", "post"}:
             node["items"] = [localized]
+        elif body_kind == "panel":
+            node["title"] = localized[:40]
+            node["items"] = [localized]
+            node["notes"] = "Single big number with a supporting icon"
+        elif body_kind == "scene":
+            node["title"] = f"Scene {i}"
+            node["text"] = localized
+            node["notes"] = "Title card over neutral background footage"
         elif body_kind == "slide":
             node["title"] = localized[:60]
             node["items"] = [localized]

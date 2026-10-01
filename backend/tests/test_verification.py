@@ -312,12 +312,14 @@ def test_no_claims_means_no_trust():
 
 
 def test_contradiction_blocks_approval():
-    assert blocking_reasons(["supported", "contradicted"]) == ["1 claim contradicted by the source"]
+    assert blocking_reasons(["supported", "contradicted"]) == [
+        "1 sentence conflicts with the source. Edit and check again."
+    ]
 
 
 def test_open_high_severity_issue_blocks_approval():
     reasons = blocking_reasons(["supported"], open_high_issues=1)
-    assert reasons == ["1 unresolved high-severity consistency issue"]
+    assert reasons == ["1 number differs from the source. See Numbers check."]
 
 
 def test_clean_output_is_approvable():

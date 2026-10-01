@@ -164,7 +164,9 @@ async def consistency(
         .options(selectinload(FactSheet.facts).selectinload(Fact.evidence))
     )
     if sheet is None:
-        raise HTTPException(409, "No Source of Truth yet. Run extraction first.")
+        raise HTTPException(
+            409, "This source has no key facts yet. Open Key facts and find them first."
+        )
 
     result = analyze(
         list(sheet.facts),

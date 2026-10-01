@@ -37,7 +37,13 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: Literal["gemini", "openai_compatible", "stub"] = "gemini"
-    llm_model: str = "gemini-2.5-flash"
+    llm_model: str = "gemini-flash-latest"
+    # Comma-separated models tried in order when the main one is overloaded
+    # (503/429) or retired (404).
+    llm_fallback_model: str = (
+        "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash,"
+        "gemini-flash-lite-latest,gemini-3.5-flash-lite"
+    )
     llm_temperature: float = 0.2
     gemini_api_key: str = ""
     openai_api_key: str = ""

@@ -1,7 +1,8 @@
 """The single generator.
 
-Advisory, summary, deck, email, social post, press release and report all come
-through this function. They differ only by the FormatSpec handed in.
+Advisory, summary, deck, email, LinkedIn post, press release, report,
+infographic package and video package all come through this function. They
+differ only by the FormatSpec handed in.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from app.config import settings
-from app.schemas.content_ir import ContentIR, Node, iter_text
+from app.schemas.content_ir import ContentIR, DraftIR, Node, iter_text
 from app.services.generation.audiences import (
     DEVANAGARI_LANGUAGES,
     AudienceProfile,
@@ -27,6 +28,39 @@ log = logging.getLogger(__name__)
 MAX_ATTEMPTS = 2
 
 DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+
+
+# The field each kind cannot do without, and how many entries it needs. A slide
+# whose text all landed in speaker notes renders as an empty slide.
+REQUIRED_CONTENT: dict[str, tuple[str, int]] = {
+    "slide": ("items", 2),
+    "bullets": ("items", 1),
+    "post": ("items", 1),
+    "panel": ("items", 1),
+    "scene": ("text", 1),
+    "paragraph": ("text", 1),
+    "quote": ("text", 1),
+}
+
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?\u0964])\s+")
+
+
+def _uncited_ok(node: Node, spec: FormatSpec) -> bool:
+    """Headings never need a citation; a spec may also allow short paragraphs."""
+    if node.kind == "heading":
+        return True
+    return (
+        spec.uncited_max_words > 0
+        and node.kind == "paragraph"
+        and len((node.text or "").split()) <= spec.uncited_max_words
+    )
+
+
+def _content_count(node: Node, field_name: str) -> int:
+    value = getattr(node, field_name)
+    if field_name == "items":
+        return len([i for i in (value or []) if i and i.strip()])
+    return 1 if value and value.strip() else 0
 
 
 class GenerationError(RuntimeError):
@@ -65,7 +99,17 @@ def _validate(ir: ContentIR, spec: FormatSpec, labels: set[str], language: str =
                 f"Node {node.id!r} cited {', '.join(repr(u) for u in unknown)}, which "
                 "do not exist. Cite only the labels listed in FACTS."
             )
-        if not node.fact_ids and node.kind != "heading":
+        required = REQUIRED_CONTENT.get(node.kind)
+        if required and _content_count(node, required[0]) < required[1]:
+            field_name, minimum = required
+            problems.append(
+                f"Node {node.id!r} ({node.kind}) has too little in `{field_name}`: it needs "
+                f"at least {minimum} entr{'ies' if minimum > 1 else 'y'}. Put the visible "
+                f"content in `{field_name}`, not only in `notes`."
+            )
+        if node.kind == "heading" and not (node.text or node.title or "").strip():
+            problems.append(f"Node {node.id!r} is a heading with no text. Give it `text`.")
+        if not node.fact_ids and not _uncited_ok(node, spec):
             # Headings are navigational; everything else must be attributable.
             problems.append(
                 f"Node {node.id!r} cited no facts. Every non-heading node must cite at "
@@ -113,8 +157,27 @@ def _sanitize(
                 continue
             resolved.append(str(fact.id))
 
-        if not resolved and node.kind != "heading":
+        if not resolved and not _uncited_ok(node, spec):
             dropped.append(f"node {node.id!r} (no resolvable citation)")
+            continue
+
+        # Headings carry their words in `text`; accept a stray `title`, drop empties.
+        if node.kind == "heading":
+            words = (node.text or node.title or "").strip()
+            if not words:
+                dropped.append(f"node {node.id!r} (empty heading)")
+                continue
+            node = node.model_copy(update={"text": words})
+
+        # A slide that put everything in its notes: show the notes as bullets
+        # rather than an empty slide.
+        if node.kind == "slide" and _content_count(node, "items") == 0 and node.notes:
+            bullets = [p.strip() for p in SENTENCE_SPLIT.split(node.notes) if p.strip()]
+            node = node.model_copy(update={"items": bullets, "notes": None})
+
+        required = REQUIRED_CONTENT.get(node.kind)
+        if required and _content_count(node, required[0]) == 0:
+            dropped.append(f"node {node.id!r} (empty {node.kind})")
             continue
 
         # Node ids must be unique for the editor and for verification anchoring.
@@ -135,6 +198,7 @@ async def generate(
     audience: AudienceProfile,
     language: str,
     source_name: str,
+    controls: dict[str, str] | None = None,
 ) -> GenerationResult:
     if not facts:
         raise GenerationError("Cannot generate from an empty Source of Truth. Extract facts first.")
@@ -153,9 +217,11 @@ async def generate(
             audience=audience,
             language=language,
             source_name=source_name,
+            controls=controls,
             violations=violations,
         )
-        last = await llm.complete_structured(system=SYSTEM, prompt=prompt, schema=ContentIR)
+        draft = await llm.complete_structured(system=SYSTEM, prompt=prompt, schema=DraftIR)
+        last = draft.to_content_ir()
 
         violations = _validate(last, spec, set(label_map), language)
         if not violations:

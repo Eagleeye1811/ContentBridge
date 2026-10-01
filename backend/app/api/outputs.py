@@ -27,13 +27,31 @@ from app.schemas.outputs import (
     AudienceInfo,
     CatalogOut,
     ContentIRUpdate,
+    ControlInfo,
+    FormatChoiceInfo,
     FormatInfo,
+    FormatOptionInfo,
     GenerateRequest,
     OutputDetail,
+    OutputListItem,
     OutputOut,
 )
 from app.services.generation.audiences import AUDIENCES, LANGUAGES
+from app.services.generation.controls import (
+    DEFAULT_CONTROLS,
+    DETAIL_LEVELS,
+    OBJECTIVES,
+    STYLES,
+    TONES,
+    UnknownControl,
+    resolve_controls,
+)
 from app.services.generation.formats import FORMATS, UnknownFormat, get_format
+from app.services.generation.formats.base import (
+    UnknownFormatOption,
+    chosen_audience,
+    resolve_options,
+)
 from app.services.llm import llm_available
 from app.services.rendering import RENDERERS, get_renderer, render_bytes
 from app.services.storage import storage
@@ -70,18 +88,42 @@ def _summary(output: Output) -> OutputOut:
     )
 
 
+def _control_infos(registry) -> list[ControlInfo]:
+    return [
+        ControlInfo(key=o.key, name=o.name, description=o.description) for o in registry.values()
+    ]
+
+
 @router.get("/catalog", response_model=CatalogOut)
 async def catalog() -> CatalogOut:
     """Everything the Studio can offer, read straight from the registries."""
     return CatalogOut(
         formats=[
             FormatInfo(
-                key=s.key, name=s.name, description=s.description, renderers=list(s.renderers)
+                key=s.key,
+                name=s.name,
+                description=s.description,
+                renderers=list(s.renderers),
+                options=[
+                    FormatOptionInfo(
+                        key=o.key,
+                        label=o.label,
+                        help=o.help,
+                        default=o.default,
+                        choices=[FormatChoiceInfo(key=c.key, label=c.label) for c in o.choices],
+                    )
+                    for o in s.options
+                ],
             )
             for s in FORMATS.values()
         ],
         audiences=[AudienceInfo(key=a.key, name=a.name) for a in AUDIENCES.values()],
         languages=LANGUAGES,
+        tones=_control_infos(TONES),
+        detail_levels=_control_infos(DETAIL_LEVELS),
+        objectives=_control_infos(OBJECTIVES),
+        styles=_control_infos(STYLES),
+        defaults=DEFAULT_CONTROLS,
     )
 
 
@@ -96,16 +138,43 @@ async def create_outputs(
     """Fan out one request across types and languages. One job, many outputs."""
     await _owned_document(db, user, document_id)
 
+    types: list[str] = []
     for key in body.types:
         try:
-            get_format(key)
+            # Normalise legacy keys (social -> linkedin) so new rows use the current one.
+            canonical = get_format(key).key
         except UnknownFormat as exc:
             raise HTTPException(422, str(exc)) from exc
-    if body.audience not in AUDIENCES:
+        if canonical not in types:
+            types.append(canonical)
+    if body.audience is not None and body.audience not in AUDIENCES:
         raise HTTPException(422, f"Unknown audience {body.audience!r}")
     unknown_langs = [x for x in body.languages if x not in LANGUAGES]
     if unknown_langs:
         raise HTTPException(422, f"Unsupported language(s): {', '.join(unknown_langs)}")
+
+    # Each type gets its own audience and controls: an explicit choice in the
+    # request wins, then an option that implies one, then the type's defaults.
+    plans: dict[str, dict] = {}
+    for t in types:
+        spec = get_format(t)
+        try:
+            options = resolve_options(spec, body.options.get(t) or body.options.get(spec.key))
+            controls = resolve_controls(
+                {
+                    **{k: v for k, v in spec.defaults.items() if k != "audience"},
+                    **body.controls(),
+                }
+            )
+        except (UnknownFormatOption, UnknownControl) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        audience = (
+            body.audience
+            or chosen_audience(spec, options)
+            or spec.defaults.get("audience")
+            or "officer"
+        )
+        plans[t] = {"options": options, "controls": controls, "audience": audience}
 
     sheet = await db.scalar(
         select(FactSheet).where(
@@ -113,13 +182,23 @@ async def create_outputs(
         )
     )
     if sheet is None:
-        raise HTTPException(409, "No Source of Truth yet. Run extraction first.")
+        raise HTTPException(
+            409, "This source has no key facts yet. Open Key facts and find them first."
+        )
     if not llm_available():
-        raise HTTPException(503, "No LLM provider configured.")
+        raise HTTPException(
+            503, "Writing is not available: no AI model is configured on the server."
+        )
 
     requests = [
-        {"type": t, "audience": body.audience, "language": lang}
-        for t in body.types
+        {
+            "type": t,
+            "audience": plans[t]["audience"],
+            "language": lang,
+            "controls": plans[t]["controls"],
+            "options": plans[t]["options"],
+        }
+        for t in types
         for lang in body.languages
     ]
 
@@ -154,6 +233,21 @@ async def list_outputs(document_id: uuid.UUID, db: DbSession, user: CurrentUser)
         select(Output).where(Output.document_id == document_id).order_by(Output.created_at.desc())
     )
     return [_summary(o) for o in rows]
+
+
+@router.get("/outputs", response_model=list[OutputListItem])
+async def list_all_outputs(db: DbSession, user: CurrentUser) -> list[OutputListItem]:
+    """Everything this user has created, across all of their sources, newest first."""
+    rows = await db.execute(
+        select(Output, Document.filename)
+        .join(Document, Document.id == Output.document_id)
+        .where(Document.owner_id == user.id)
+        .order_by(Output.created_at.desc())
+    )
+    return [
+        OutputListItem(**_summary(output).model_dump(), document_name=filename)
+        for output, filename in rows.all()
+    ]
 
 
 @router.get("/outputs/{output_id}", response_model=OutputDetail)
@@ -210,9 +304,17 @@ async def regenerate(
 ) -> JobOut:
     output = await _owned_output(db, user, output_id)
     if not llm_available():
-        raise HTTPException(503, "No LLM provider configured.")
+        raise HTTPException(
+            503, "Writing is not available: no AI model is configured on the server."
+        )
 
-    request = {"type": output.type, "audience": output.audience, "language": output.language}
+    request = {
+        "type": get_format(output.type).key,
+        "audience": output.audience,
+        "language": output.language,
+        "controls": {k: v for k, v in (output.controls or {}).items() if k != "format"},
+        "options": (output.controls or {}).get("format") or {},
+    }
     job = Job(
         document_id=output.document_id,
         kind="generate",
@@ -288,6 +390,7 @@ async def export_output(
         include_citations=citations,
         citations=citation_map,
         source_name=source_name,
+        output_type=spec.key,
     )
 
     renderer = get_renderer(format)

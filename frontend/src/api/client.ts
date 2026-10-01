@@ -13,6 +13,7 @@ import type {
   GenerateRequest,
   Output,
   OutputDetail,
+  OutputListItem,
   ApprovalState,
   AuditEntry,
   Issue,
@@ -87,6 +88,7 @@ export const api = {
 
   listDocuments: () => request<Doc[]>('/documents'),
   getDocument: (id: string) => request<Doc>(`/documents/${id}`),
+  deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: 'DELETE' }),
   listBlocks: (id: string, page?: number) =>
     request<Block[]>(`/documents/${id}/blocks${page ? `?page=${page}` : ''}`),
   pageImageUrl: (id: string, page: number, dpi = 130) =>
@@ -123,6 +125,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  listAllOutputs: () => request<OutputListItem[]>('/outputs'),
   getOutput: (id: string) => request<OutputDetail>(`/outputs/${id}`),
   updateOutput: (id: string, contentIr: ContentIR) =>
     request<OutputDetail>(`/outputs/${id}`, {

@@ -64,7 +64,7 @@ async def _blockers(db: DbSession, output: Output) -> list[str]:
     if output.verified_at is None:
         # An unverified output has no claims, so the verdict-based check would
         # vacuously pass. Say so explicitly instead.
-        return ["not verified yet"]
+        return ["Run the accuracy check first."]
 
     claims = list(await db.scalars(select(OutputClaim).where(OutputClaim.output_id == output.id)))
     issues = list(

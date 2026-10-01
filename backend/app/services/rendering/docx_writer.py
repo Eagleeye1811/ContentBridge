@@ -13,6 +13,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt, RGBColor
 
 from app.schemas.content_ir import ContentIR, Node
+from app.services.rendering.srt import estimate_seconds
 
 SEVERITY_LABEL = {
     "info": "Information",
@@ -57,6 +58,12 @@ def _add_table(doc: Document, node: Node) -> None:
                         run.bold = True
 
 
+def _add_labelled(doc: Document, label: str, body: str) -> None:
+    para = doc.add_paragraph()
+    para.add_run(f"{label}: ").bold = True
+    para.add_run(body)
+
+
 def _add_node(doc: Document, node: Node) -> None:
     match node.kind:
         case "heading":
@@ -68,13 +75,36 @@ def _add_node(doc: Document, node: Node) -> None:
         case "quote":
             if node.text:
                 doc.add_paragraph(node.text, style="Quote")
-        case "bullets" | "post":
+        case "bullets":
+            if node.title:
+                doc.add_paragraph().add_run(node.title).bold = True
             for item in node.items or []:
                 doc.add_paragraph(item, style="List Bullet")
+        case "post":
+            for item in node.items or []:
+                doc.add_paragraph(item)
         case "callout":
             _add_callout(doc, node)
         case "table":
             _add_table(doc, node)
+        case "panel":
+            doc.add_heading(node.title or "Panel", level=2)
+            for item in node.items or []:
+                doc.add_paragraph(item, style="List Bullet").runs[0].bold = True
+            if node.text:
+                doc.add_paragraph(node.text)
+            if node.notes:
+                _add_labelled(doc, "Visual", node.notes)
+        case "scene":
+            seconds = estimate_seconds(node.text or "")
+            title = node.title or "Scene"
+            doc.add_heading(f"{title} (~{round(seconds)} s)" if seconds else title, level=2)
+            if node.text:
+                _add_labelled(doc, "Narration", node.text)
+            if node.items:
+                _add_labelled(doc, "On-screen text", " · ".join(node.items))
+            if node.notes:
+                _add_labelled(doc, "Visuals", node.notes)
         case "slide":
             doc.add_heading(node.title or "Slide", level=3)
             for item in node.items or []:

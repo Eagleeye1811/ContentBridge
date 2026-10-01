@@ -39,7 +39,7 @@ def test_normalize_text_collapses_runs():
 
 def test_mime_rejects_unknown_extension():
     with pytest.raises(UnsupportedFormat):
-        mime_for("notes.txt")
+        mime_for("notes.xlsx")
 
 
 # --- PDF -------------------------------------------------------------------

@@ -53,6 +53,13 @@ def _node_claims(node: Node) -> list[str]:
             if node.notes:
                 parts += _sentences(node.notes)
             return parts
+        case "panel" | "scene":
+            # Data points, captions and narration are claims. `notes` is visual
+            # direction ("bar chart", "aerial shot") and states nothing; any
+            # figure that strays into it is still caught by the consistency check.
+            parts = [i.strip() for i in (node.items or []) if len(i.strip()) >= MIN_CLAIM_CHARS]
+            parts += _sentences(node.text or "")
+            return parts
         case "table":
             rows = node.rows or []
             # Skip the header row; a header states nothing.

@@ -19,8 +19,11 @@ interface Props {
 export default function DocumentViewer({ doc, page, blocks, selectedId, onSelect }: Props) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // PDFs are rasterized page by page; an image source is its own single page.
+  const hasGeometry = doc.mime === 'application/pdf' || doc.mime.startsWith('image/')
 
   useEffect(() => {
+    if (!hasGeometry) return
     let revoked: string | null = null
     let cancelled = false
     setImageUrl(null)
@@ -42,16 +45,15 @@ export default function DocumentViewer({ doc, page, blocks, selectedId, onSelect
       cancelled = true
       if (revoked) URL.revokeObjectURL(revoked)
     }
-  }, [doc.id, page])
+  }, [doc.id, page, hasGeometry])
 
-  if (doc.mime !== 'application/pdf') {
+  if (!hasGeometry) {
     return (
-      <div className="rounded-xl border border-ink-200 bg-white p-6 text-sm text-ink-600">
-        <p className="font-medium text-ink-900">No page geometry for this format</p>
+      <div className="rounded-2xl border border-ink-200 bg-white p-6 text-sm text-ink-600">
+        <p className="font-medium text-ink-900">No page preview for this file type</p>
         <p className="mt-1">
-          {doc.mime.includes('wordprocessing') ? 'Word documents have' : 'This format has'} no fixed
-          pagination, so blocks are shown as structured text on the left. Every block still carries
-          its section path.
+          The text is shown alongside, organised by section. Everything still links back to its
+          place in the source.
         </p>
       </div>
     )
@@ -68,13 +70,13 @@ export default function DocumentViewer({ doc, page, blocks, selectedId, onSelect
   if (!imageUrl) {
     return (
       <div className="flex h-96 items-center justify-center rounded-xl border border-ink-200 bg-white text-sm text-ink-400">
-        Rendering page {page}…
+        {doc.mime.startsWith('image/') ? 'Loading image…' : `Rendering page ${page}…`}
       </div>
     )
   }
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-ink-200 bg-white shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-sm">
       <img src={imageUrl} alt={`Page ${page}`} className="block w-full" />
       {blocks.map((b) => {
         if (!b.bbox) return null

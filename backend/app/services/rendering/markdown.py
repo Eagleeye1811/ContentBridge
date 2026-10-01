@@ -7,6 +7,7 @@ export reproducible and testable.
 from __future__ import annotations
 
 from app.schemas.content_ir import ContentIR, Node
+from app.services.rendering.srt import estimate_seconds
 
 SEVERITY_LABEL = {
     "info": "Information",
@@ -27,8 +28,12 @@ def _render_node(node: Node) -> str:
             body = (node.text or "").strip()
             return f"> {body}" if node.kind == "quote" else body
 
-        case "bullets" | "post":
-            return "\n".join(f"- {item}" for item in (node.items or []))
+        case "bullets":
+            lines = [f"**{node.title}**", ""] if node.title else []
+            return "\n".join(lines + [f"- {item}" for item in (node.items or [])])
+
+        case "post":
+            return "\n\n".join(item for item in (node.items or []) if item)
 
         case "callout":
             label = SEVERITY_LABEL.get(node.severity or "", node.severity or "Note")
@@ -41,6 +46,29 @@ def _render_node(node: Node) -> str:
             lines += [f"- {item}" for item in (node.items or [])]
             if node.notes:
                 lines.append(f"\n_Speaker notes: {node.notes}_")
+            return "\n".join(lines)
+
+        case "panel":
+            lines = [f"### {node.title or 'Panel'}"]
+            lines += [f"- **{item}**" for item in (node.items or [])]
+            if node.text:
+                lines.append(f"\n{node.text.strip()}")
+            if node.notes:
+                lines.append(f"\n_Visual: {node.notes}_")
+            return "\n".join(lines)
+
+        case "scene":
+            seconds = estimate_seconds(node.text or "")
+            heading = f"### {node.title or 'Scene'}"
+            if seconds:
+                heading += f" (~{round(seconds)} s)"
+            lines = [heading]
+            if node.text:
+                lines.append(f"\n**Narration:** {node.text.strip()}")
+            if node.items:
+                lines.append("\n**On-screen text:** " + " · ".join(node.items))
+            if node.notes:
+                lines.append(f"\n**Visuals:** {node.notes}")
             return "\n".join(lines)
 
         case "table":
@@ -63,9 +91,17 @@ def render(
     *,
     include_citations: bool = False,
     citations: dict[str, str] | None = None,
+    output_type: str = "",
     **_: object,
 ) -> str:
-    parts = [f"# {ir.title}", ""]
+    # A post is pasted as-is, so it has no document title; an email's title is
+    # its subject line.
+    if output_type in {"linkedin", "social"}:
+        parts: list[str] = []
+    elif output_type == "email":
+        parts = [f"**Subject:** {ir.title}", ""]
+    else:
+        parts = [f"# {ir.title}", ""]
     used: list[str] = []
 
     for node in ir.nodes:

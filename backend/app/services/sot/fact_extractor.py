@@ -24,12 +24,16 @@ from app.services.sot.normalizer import canonicalize, slugify_key
 
 log = logging.getLogger(__name__)
 
-MAX_BATCH_TOKENS = 1400
+# Large excerpts keep the number of model calls low (free tiers allow only a
+# few requests a day); the prompt asks for full coverage of each excerpt.
+MAX_BATCH_TOKENS = 3000
 MAX_QUOTE_CHARS = 600
 
 FactType = Literal["metric", "date", "entity", "finding", "recommendation", "risk"]
 
-SYSTEM = """You extract a structured Source of Truth from an official document.
+SYSTEM = """You extract the key facts from a document so other content can be written
+from them. The document may be an official notice, a report, a research paper,
+a presentation or teaching material.
 
 Hard rules:
 - Extract ONLY what the excerpt states. Never infer, estimate or round.
@@ -38,10 +42,18 @@ Hard rules:
   a fact you must not report.
 - Copy numbers exactly as written. Do not convert units or reformat figures.
 - `statement` must be a single self-contained sentence a reader could verify
-  against the cited block.
-- Prefer specific, checkable facts: counts, dates, percentages, amounts, named
-  findings, named recommendations, named risks.
-- Do not repeat the same fact twice. Skip boilerplate, headers and page numbers.
+  against the cited block, understandable without the rest of the document.
+
+Coverage:
+- Capture every substantive point, not only numbers: figures, dates, names,
+  definitions, explanations, findings, steps, examples, comparisons,
+  recommendations and risks. Use `finding` for definitions, explanations and
+  key points; `recommendation` for advice and steps.
+- Report every substantive point in the excerpt; a long or dense excerpt may
+  yield 20 or more facts. Report few only when it is mostly headers or
+  boilerplate.
+- Do not repeat the same fact twice. Skip page numbers, slide counters, running
+  headers and decorative text.
 """
 
 

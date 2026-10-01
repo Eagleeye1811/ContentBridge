@@ -111,14 +111,14 @@ def test_already_submitted_work_is_not_submitted_again(status):
 
 def test_a_contradicted_claim_is_reported_as_the_blocker():
     reasons = blocking_reasons(["supported", "supported", "contradicted"])
-    assert reasons == ["1 claim contradicted by the source"]
+    assert reasons == ["1 sentence conflicts with the source. Edit and check again."]
 
 
 def test_several_blockers_are_all_reported():
     reasons = blocking_reasons(["contradicted", "contradicted"], open_high_issues=2)
     assert len(reasons) == 2
-    assert "2 claims contradicted" in reasons[0]
-    assert "2 unresolved high-severity" in reasons[1]
+    assert "2 sentences conflict" in reasons[0]
+    assert "2 numbers differ" in reasons[1]
 
 
 def test_unsupported_claims_do_not_block_on_their_own():

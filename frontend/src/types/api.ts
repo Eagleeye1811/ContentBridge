@@ -71,6 +71,7 @@ export interface Job {
   status: 'queued' | 'running' | 'succeeded' | 'failed'
   stage: string
   progress: number
+  result?: { outputs?: string[]; failures?: string[]; [key: string]: unknown } | null
   error: string | null
   created_at: string
   finished_at: string | null
@@ -137,6 +138,8 @@ export type NodeKind =
   | 'callout'
   | 'quote'
   | 'post'
+  | 'panel'
+  | 'scene'
 
 export interface IRNode {
   id: string
@@ -163,6 +166,7 @@ export interface Output {
   type: string
   audience: string
   language: string
+  controls: Partial<Controls> & { format?: Record<string, string> }
   status: 'draft' | 'verified' | 'in_review' | 'approved' | 'rejected' | 'exported'
   trust_score: number | null
   version: number
@@ -172,9 +176,21 @@ export interface Output {
   renderers: string[]
 }
 
+export interface OutputListItem extends Output {
+  document_name: string
+}
+
 export interface OutputDetail extends Output {
   content_ir: ContentIR
   facts: Fact[]
+}
+
+export interface FormatOption {
+  key: string
+  label: string
+  help: string
+  default: string
+  choices: { key: string; label: string }[]
 }
 
 export interface FormatInfo {
@@ -182,18 +198,41 @@ export interface FormatInfo {
   name: string
   description: string
   renderers: string[]
+  options: FormatOption[]
+}
+
+export interface ControlInfo {
+  key: string
+  name: string
+  description: string
+}
+
+/** Communication controls. They shape wording and emphasis, never facts. */
+export interface Controls {
+  tone: string
+  detail_level: string
+  objective: string
+  style: string
 }
 
 export interface Catalog {
   formats: FormatInfo[]
   audiences: { key: string; name: string }[]
   languages: Record<string, string>
+  tones: ControlInfo[]
+  detail_levels: ControlInfo[]
+  objectives: ControlInfo[]
+  styles: ControlInfo[]
+  defaults: Controls
 }
 
-export interface GenerateRequest {
+export interface GenerateRequest extends Partial<Controls> {
   types: string[]
-  audience: string
+  /** Optional: each output type picks a suitable audience when left out. */
+  audience?: string
   languages: string[]
+  /** Format-specific options keyed by output type, e.g. { ppt: { slides: 'short' } }. */
+  options?: Record<string, Record<string, string>>
 }
 
 export type VerdictKind = 'supported' | 'partial' | 'unsupported' | 'contradicted'

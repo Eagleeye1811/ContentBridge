@@ -2,8 +2,9 @@
 
 **SIH 2026 · PS 26154 — Gen AI Platform for Automated Content Transformation**
 
-Upload an authoritative document. Get seven verified outputs — advisory, deck, executive
-summary, official email, social post, press release, report — in English, Hindi and Marathi,
+Add an authoritative source — a document, an image or pasted text. Get nine verified outputs —
+advisory, deck, executive summary, official email, LinkedIn post, press release, report,
+infographic package and video package — in English, Hindi and Marathi,
 each one traceable back to a page and a line of the source.
 
 ## The core idea
@@ -11,7 +12,8 @@ each one traceable back to a page and a line of the source.
 Every output type walks **one** pipeline. There is no separate AI pipeline per format.
 
 ```
-Upload ──▶ Parse ──▶ Blocks (page, section, bbox)       ── traceability anchors
+Source ──▶ Parse ──▶ Blocks (page, section, bbox)       ── traceability anchors
+(PDF · DOCX · PPTX · text · image/OCR)
                          │
                          ├──▶ Chunk + Embed ──▶ Qdrant  ── retrieval
                          │
@@ -38,7 +40,7 @@ Two intermediate representations carry the whole design:
 - **ContentIR** — a format-neutral node tree. The LLM never emits PPTX or DOCX; renderers are
   pure functions of ContentIR. It is also the unit a human edits and the unit verification scores.
 
-Adding an eighth output type is a config file, not a pipeline.
+Adding another output type is a config file, not a pipeline.
 
 ## Stack
 
@@ -106,8 +108,10 @@ backend/app/
     llm/          provider abstraction
   pipeline/       the one pipeline
 frontend/src/
-  pages/          Documents, FactSheet, Studio, Review, Consistency, Approvals, Settings
-  components/     DocumentViewer, EvidencePanel, CitationChip, VerdictBadge, ConsistencyMatrix
+  pages/          Sources, OutputReview, Approvals, Login
+    workspace/    one source: Document, Key facts, one section per format, Numbers check
+  components/     CreateForm (per-format options), OutputList, AccuracyPanel, ApprovalPanel,
+                  DownloadPanel, ContentIRView, ContentEditor, DocumentViewer, ui
 ```
 
 ## Status
@@ -122,6 +126,40 @@ frontend/src/
 | 5 | Remaining outputs + pptx/docx renderers | **done** |
 | 6 | Audience profiles + Hindi/Marathi | **done** |
 | 7 | Review, approval gate, demo polish | **done** |
+| 8 | PS 26154 alignment: controls, LinkedIn/infographic/video, text + image sources | **done** |
+
+### What the PS 26154 alignment gives you
+
+Everything rides the existing spine; no new pipeline.
+
+- **One section per output format.** Each has its own options declared in its
+  FormatSpec (`options=`: slide count, video length, infographic layout, ...)
+  and lists everything created in that format. Options become prompt lines and
+  node budgets via `apply_options`, so the generator is unchanged.
+- **Seven controls** — output type, target audience, language, tone,
+  detail level, communication objective, content style. Tone, detail,
+  objective and style are prompt configuration in
+  `services/generation/controls.py`, like audiences: they change wording and
+  emphasis, never facts, and the generator's hard rules still apply. Each
+  output stores the controls it was made with, so regenerating reproduces them.
+- **LinkedIn Post** replaces the generic social post (`social` still resolves
+  for outputs stored before the rename).
+- **Infographic Package** — headline, `panel` nodes (data points, caption and a
+  visual recommendation per panel), optional takeaway callout. HTML export lays
+  the panels out as a grid.
+- **Video Package** — `scene` nodes carrying narration, on-screen text and
+  visual direction: together the script and the storyboard. **Subtitles (.srt)
+  are rendered from the narration**, never written separately, so they cannot
+  say anything verification did not check. No video file is produced.
+- Visual direction (`notes` on panels and scenes) is not judged as a claim;
+  narration, captions and data points are. Any figure that strays into visual
+  notes is still caught by the consistency check.
+- **Text and image sources.** Pasted text and `.txt`/`.md` files become blocks
+  with section paths. Images (`.png`/`.jpg`) are read by Tesseract OCR, and
+  every paragraph keeps its box on the image, so the source viewer highlights
+  it just like a PDF. Both then go through indexing → Fact Sheet → generation
+  unchanged. On the host, install Tesseract (`brew install tesseract`); the
+  Docker image includes it with Hindi and Marathi data.
 
 ### What Phase 7 gives you
 
@@ -194,7 +232,7 @@ All seven output types, and real files.
 | Presentation | `slide` only | **pptx**, md, html |
 | Executive Summary | heading, paragraph, bullets | docx, md, html |
 | Official Email | heading, paragraph, bullets | txt, html, md |
-| Social Post | `post` only | txt, md |
+| LinkedIn Post | `post` only | txt, md |
 | Press Release | heading, paragraph, quote | docx, md, html |
 | Report | heading, paragraph, bullets, table | docx, md, html |
 

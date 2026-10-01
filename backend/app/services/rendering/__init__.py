@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.schemas.content_ir import ContentIR
-from app.services.rendering import docx_writer, html_writer, markdown, pptx_writer, text
+from app.services.rendering import docx_writer, html_writer, markdown, pptx_writer, srt, text
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +29,7 @@ RENDERERS: dict[str, RendererSpec] = {
         RendererSpec("markdown", "Markdown", "md", "text/markdown", False, markdown.render),
         RendererSpec("text", "Plain text", "txt", "text/plain", False, text.render),
         RendererSpec("html", "HTML", "html", "text/html", False, html_writer.render),
+        RendererSpec("srt", "Subtitles", "srt", "application/x-subrip", False, srt.render),
         RendererSpec(
             "docx",
             "Word",
