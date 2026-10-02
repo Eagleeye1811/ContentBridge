@@ -94,8 +94,14 @@ Audience = Enum(
     "technical",
     "public",
     "social",
+    "officials",
+    "senior_leadership",
+    "team",
+    "researchers",
+    "students",
     name="audience",
     native_enum=False,
+    length=64,
 )
 OutputStatus = Enum(
     "draft",

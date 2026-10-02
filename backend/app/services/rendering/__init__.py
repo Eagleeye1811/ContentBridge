@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.schemas.content_ir import ContentIR
-from app.services.rendering import docx_writer, html_writer, markdown, pptx_writer, srt, text
+from app.services.rendering import docx_writer, html_writer, markdown, pdf_writer, pptx_writer, srt, text
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +45,14 @@ RENDERERS: dict[str, RendererSpec] = {
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             True,
             pptx_writer.render,
+        ),
+        RendererSpec(
+            "pdf",
+            "PDF Document",
+            "pdf",
+            "application/pdf",
+            True,
+            pdf_writer.render,
         ),
     )
 }

@@ -15,17 +15,13 @@ class GenerateRequest(BaseModel):
 
     types: list[str] = Field(min_length=1, description="e.g. ['advisory','summary']")
     languages: list[str] = Field(default=["en"], min_length=1)
-    # Format-specific options, keyed by output type, e.g.
-    # {"ppt": {"slides": "5"}}. Declared by each FormatSpec.
     options: dict[str, dict[str, str]] = Field(default_factory=dict)
-    # Optional overrides. Left out, each output type uses the audience and
-    # writing controls that suit it (FormatSpec.defaults), and an option such
-    # as "Presenting to" can set the audience.
     audience: str | None = None
     tone: str | None = None
     detail_level: str | None = None
     objective: str | None = None
     style: str | None = None
+    controls_dict: dict[str, str] = Field(default_factory=dict, alias="controls")
 
     def controls(self) -> dict[str, str]:
         values = {
@@ -33,6 +29,7 @@ class GenerateRequest(BaseModel):
             "detail_level": self.detail_level,
             "objective": self.objective,
             "style": self.style,
+            **(self.controls_dict or {}),
         }
         return {k: v for k, v in values.items() if v}
 
@@ -119,6 +116,60 @@ class CatalogOut(BaseModel):
     defaults: dict[str, str]
 
 
+class PresentationOutlineRequest(BaseModel):
+    title: str | None = None
+    purpose: str = "executive briefing"
+    audience: str = "officials"
+    slide_count: str = "auto"
+    duration: str = "10"
+    language: str = "en"
+    content_detail: str = "balanced"
+    theme: str = "navy_white"
+    visual_preference: str = "balanced"
+    speaker_notes: bool = True
+    additional_instructions: str | None = None
+
+
+class SlideOutlineItem(BaseModel):
+    id: str
+    title: str
+    key_message: str
+    summary: str
+    suggested_layout: str = "standard_bullet"
+    fact_ids: list[str] = Field(default_factory=list)
+
+
+class PresentationOutlineResponse(BaseModel):
+    title: str
+    slides: list[SlideOutlineItem]
+
+
+class SlideRegenerateRequest(BaseModel):
+    instructions: str | None = None
+
+
+class PresentationReconfigureRequest(BaseModel):
+    config: PresentationOutlineRequest
+    scope: str = "all"  # "all" or "selected"
+    selected_slide_ids: list[str] = Field(default_factory=list)
+    preserve_user_edits: bool = True
+    content_ir: ContentIR | None = None
+
+
+class PresentationReconfigureResponse(BaseModel):
+    output: OutputDetail
+    change_summary: list[str]
+    proposed_outline: PresentationOutlineResponse | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SlideCountAdjustRequest(BaseModel):
+    target_count: str
+    config: PresentationOutlineRequest
+
+
+class PresentationRevertRequest(BaseModel):
+    target_version: int | None = None
 class SendEmailRequest(BaseModel):
     to_email: str
     cc_emails: list[str] | None = None

@@ -60,6 +60,7 @@ export function Button({
   type = 'button',
   title,
   wide = false,
+  className = '',
 }: {
   children: ReactNode
   onClick?: () => void
@@ -69,6 +70,7 @@ export function Button({
   type?: 'button' | 'submit'
   title?: string
   wide?: boolean
+  className?: string
 }) {
   const look = {
     primary: 'bg-brand-600 text-white hover:bg-brand-500',
@@ -83,7 +85,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${look} ${pad} ${wide ? 'w-full' : ''}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${look} ${pad} ${wide ? 'w-full' : ''} ${className}`}
     >
       {children}
     </button>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import uuid
 
 import anyio
@@ -21,7 +22,7 @@ from app.models import (
     OutputClaim,
 )
 from app.pipeline.stages import generate_outputs
-from app.schemas.content_ir import ContentIR
+from app.schemas.content_ir import ContentIR, DraftNode, Node
 from app.schemas.documents import JobOut
 from app.schemas.outputs import (
     AudienceInfo,
@@ -35,6 +36,13 @@ from app.schemas.outputs import (
     OutputDetail,
     OutputListItem,
     OutputOut,
+    PresentationOutlineRequest,
+    PresentationOutlineResponse,
+    PresentationReconfigureRequest,
+    PresentationReconfigureResponse,
+    PresentationRevertRequest,
+    SlideCountAdjustRequest,
+    SlideRegenerateRequest,
     SendEmailRequest,
     SendEmailResponse,
 )
@@ -121,7 +129,7 @@ async def catalog() -> CatalogOut:
             )
             for s in FORMATS.values()
         ],
-        audiences=[AudienceInfo(key=a.key, name=a.name) for a in AUDIENCES.values()],
+        audiences=[AudienceInfo(key=a.key, name=a.name) for a in {a.key: a for a in AUDIENCES.values()}.values()],
         languages=LANGUAGES,
         tones=_control_infos(TONES),
         detail_levels=_control_infos(DETAIL_LEVELS),
@@ -156,8 +164,11 @@ async def create_outputs(
         role = user.job_role.name if user.job_role else "your role"
         names = ", ".join(get_format(t).name for t in refused)
         raise HTTPException(403, f"{role} cannot create: {names}.")
-    if body.audience is not None and body.audience not in AUDIENCES:
-        raise HTTPException(422, f"Unknown audience {body.audience!r}")
+    if body.audience is not None:
+        try:
+            get_audience(body.audience)
+        except UnknownAudience as exc:
+            raise HTTPException(422, str(exc)) from exc
     unknown_langs = [x for x in body.languages if x not in LANGUAGES]
     if unknown_langs:
         raise HTTPException(422, f"Unsupported language(s): {', '.join(unknown_langs)}")
@@ -177,12 +188,12 @@ async def create_outputs(
             )
         except (UnknownFormatOption, UnknownControl) as exc:
             raise HTTPException(422, str(exc)) from exc
-        audience = (
+        audience = get_audience(
             body.audience
             or chosen_audience(spec, options)
             or spec.defaults.get("audience")
             or "officer"
-        )
+        ).key
         plans[t] = {"options": options, "controls": controls, "audience": audience}
 
     sheet = await db.scalar(
@@ -340,6 +351,179 @@ async def regenerate(
     return JobOut.model_validate(job)
 
 
+@router.post("/documents/{document_id}/presentation-outline", response_model=PresentationOutlineResponse)
+async def generate_presentation_outline(
+    document_id: uuid.UUID,
+    body: PresentationOutlineRequest,
+    db: DbSession,
+    user: CurrentUser,
+) -> PresentationOutlineResponse:
+    """Generate an AI slide outline before generating the full PowerPoint presentation."""
+    doc = await _owned_document(db, user, document_id)
+    sheet = await db.scalar(
+        select(FactSheet)
+        .where(FactSheet.document_id == document_id, FactSheet.is_current.is_(True))
+        .options(selectinload(FactSheet.facts))
+        .order_by(FactSheet.version.desc())
+    )
+    if sheet is None or not sheet.facts:
+        raise HTTPException(
+            409, "This source has no key facts yet. Open Key facts and find them first."
+        )
+    if not llm_available():
+        raise HTTPException(
+            503, "Outline generation is not available: no AI model is configured on the server."
+        )
+
+    facts = sorted(sheet.facts, key=lambda f: (f.type, f.key))
+    fact_block, label_map = render_facts(facts)
+
+    target_count = int(body.slide_count) if body.slide_count and body.slide_count.isdigit() else None
+    content_slides_needed = max(1, target_count - 1) if target_count else None
+    count_instruction = (
+        f"EXACTLY {content_slides_needed} content slide cards (which with 1 cover slide equals {target_count} physical slides total)"
+        if content_slides_needed
+        else "a reasonable number of content slide cards (between 4 and 14)"
+    )
+
+    prompt = f"""You are an expert presentation designer. Create a slide outline for a presentation based ONLY on the provided source facts.
+
+PRESENTATION CONFIGURATION:
+- Title Hint: {body.title or "Suggest an executive title based on facts"}
+- Purpose: {body.purpose}
+- Audience: {body.audience}
+- Target Total Physical Slide Count: {body.slide_count} ({count_instruction})
+- Duration: {body.duration} minutes
+- Language: {body.language}
+- Detail Level: {body.content_detail}
+- Visual Preference: {body.visual_preference}
+- Additional Guidance: {body.additional_instructions or "None"}
+
+SOURCE FACTS:
+{fact_block}
+
+Produce a structured presentation outline with:
+1. `title`: Main presentation title.
+2. `slides`: List of slide outline cards. You MUST produce {count_instruction}. Each slide card MUST have:
+   - `id`: Short stable ID (e.g., out_1, out_2)
+   - `title`: Short slide title (under 8 words)
+   - `key_message`: Core takeaway of this slide
+   - `summary`: Short summary of points to present
+   - `suggested_layout`: One of 'standard_bullet', 'two_column', 'process', 'timeline', 'metrics', 'comparison', 'table', 'key_takeaways', 'references'
+   - `fact_ids`: Array of fact labels cited (e.g. ["f0", "f2"])
+"""
+    llm = get_llm()
+    outline = await llm.complete_structured(
+        system="You structure presentation slide outlines strictly from source facts.",
+        prompt=prompt,
+        schema=PresentationOutlineResponse,
+    )
+
+    # Validate and adjust outline content slide count so total physical slides = target_count (cover + content slides)
+    if target_count and outline.slides:
+        target_content_count = max(1, target_count - 1)
+        if len(outline.slides) > target_content_count:
+            outline.slides = outline.slides[:target_content_count]
+        elif len(outline.slides) < target_content_count:
+            existing_count = len(outline.slides)
+            layouts = ['standard_bullet', 'two_column', 'process', 'metrics', 'key_takeaways', 'references']
+            for i in range(existing_count + 1, target_content_count + 1):
+                outline.slides.append(
+                    SlideOutlineItem(
+                        id=f"out_{i}",
+                        title=f"Detailed Findings & Action Plan Part {i - existing_count}",
+                        key_message="Strategic recommendations and implementation steps.",
+                        summary="Overview of implementation roadmap and verified findings.",
+                        suggested_layout=layouts[(i - 1) % len(layouts)],
+                        fact_ids=[f"f{min(i, len(facts)-1)}"] if facts else [],
+                    )
+                )
+
+    return outline
+
+
+@router.post("/outputs/{output_id}/slides/{slide_id}/regenerate", response_model=OutputDetail)
+async def regenerate_single_slide(
+    output_id: uuid.UUID,
+    slide_id: str,
+    body: SlideRegenerateRequest,
+    db: DbSession,
+    user: CurrentUser,
+) -> OutputDetail:
+    """Regenerate a single slide using AI while keeping all other slides intact."""
+    output = await _owned_output(db, user, output_id)
+    if output.status == "approved":
+        raise HTTPException(409, "Approved outputs cannot be edited. Regenerate a new version.")
+    if not llm_available():
+        raise HTTPException(
+            503, "Writing is not available: no AI model is configured on the server."
+        )
+
+    ir = ContentIR.model_validate(output.content_ir)
+    target_node = next((n for n in ir.nodes if n.id == slide_id), None)
+    if target_node is None:
+        raise HTTPException(404, f"Slide node {slide_id!r} not found in this presentation.")
+
+    sheet = await db.scalar(
+        select(FactSheet)
+        .where(FactSheet.id == output.fact_sheet_id)
+        .options(selectinload(FactSheet.facts))
+    )
+    if sheet is None or not sheet.facts:
+        raise HTTPException(409, "Fact sheet not found for this presentation.")
+
+    document = await db.get(Document, output.document_id)
+    source_name = document.filename if document else ""
+
+    facts = sorted(sheet.facts, key=lambda f: (f.type, f.key))
+    fact_block, label_map = render_facts(facts)
+
+    prompt = f"""Rewrite and enhance ONLY Slide Node '{slide_id}' ({target_node.title or 'Slide'}).
+
+CURRENT SLIDE CONTENT:
+Title: {target_node.title}
+Items: {target_node.items}
+Notes: {target_node.notes}
+Layout: {target_node.layout}
+
+USER REGENERATION INSTRUCTION:
+{body.instructions or "Enhance clarity, conciseness, and speaker notes."}
+
+SOURCE FACTS:
+{fact_block}
+
+Produce the updated single DraftNode for this slide. Keep kind as 'slide'. Cite valid fact labels in fact_ids.
+"""
+    llm = get_llm()
+    updated_draft_node = await llm.complete_structured(
+        system="You rewrite individual presentation slides strictly based on source facts.",
+        prompt=prompt,
+        schema=DraftNode,
+    )
+
+    new_node = Node(
+        id=slide_id,
+        kind="slide",
+        title=updated_draft_node.title,
+        text=updated_draft_node.text,
+        items=updated_draft_node.items or None,
+        notes=updated_draft_node.notes,
+        rows=updated_draft_node.rows or None,
+        layout=updated_draft_node.layout or target_node.layout,
+        fact_ids=[str(label_map[lbl].id) for lbl in updated_draft_node.fact_ids if lbl in label_map],
+    )
+
+    new_nodes = [new_node if n.id == slide_id else n for n in ir.nodes]
+    updated_ir = ContentIR(title=ir.title, nodes=new_nodes)
+
+    output.content_ir = updated_ir.model_dump(mode="json")
+    output.status = "draft"
+    db.add(AuditLog(actor_id=user.id, entity="output", entity_id=output.id, action="slide_regenerate"))
+    await db.commit()
+
+    return await get_output(output_id, db, user)
+
+
 @router.get("/outputs/{output_id}/export")
 async def export_output(
     output_id: uuid.UUID,
@@ -347,6 +531,7 @@ async def export_output(
     user: CurrentUser,
     format: str = Query("markdown", description=f"one of: {', '.join(sorted(RENDERERS))}"),
     citations: bool = Query(False, description="append a source list"),
+    theme: str = Query("navy_white", description="theme for PowerPoint export"),
 ) -> Response:
     """Render the ContentIR. A pure function of the stored structure -- no LLM
     call, so the same output always exports identically."""
@@ -394,6 +579,9 @@ async def export_output(
                 )
 
     ir = ContentIR.model_validate(output.content_ir)
+    stored_theme = (output.controls or {}).get("theme")
+    effective_theme = (theme if (theme and theme != "navy_white") else None) or stored_theme or theme or "corporate_blue"
+
     body = render_bytes(
         ir,
         format,
@@ -401,6 +589,7 @@ async def export_output(
         citations=citation_map,
         source_name=source_name,
         output_type=spec.key,
+        theme=effective_theme,
     )
 
     renderer = get_renderer(format)
@@ -425,6 +614,188 @@ async def export_output(
         content=body,
         media_type=renderer.media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def check_deck_quality(ir: ContentIR, detail_level: str = "balanced") -> list[str]:
+    """Inspect ContentIR deck and return quality & layout geometry warnings."""
+    from app.services.rendering.layout_validator import validate_deck_geometry
+    return validate_deck_geometry(ir, detail_level=detail_level)
+
+
+@router.post("/outputs/{output_id}/reconfigure", response_model=PresentationReconfigureResponse)
+async def reconfigure_presentation(
+    output_id: uuid.UUID,
+    body: PresentationReconfigureRequest,
+    db: DbSession,
+    user: CurrentUser,
+) -> PresentationReconfigureResponse:
+    """Reconfigure an existing presentation: theme, detail level, audience, slide count, and individual slide content."""
+    output = await _owned_output(db, user, output_id)
+    if output.status == "approved":
+        raise HTTPException(409, "Approved outputs cannot be reconfigured. Regenerate a new version.")
+
+    if body.config and body.config.audience:
+        try:
+            get_audience(body.config.audience)
+        except UnknownAudience as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    current_ir = ContentIR.model_validate(output.content_ir)
+    new_ir = body.content_ir if body.content_ir else current_ir
+
+    # Compute change summary log
+    summary: list[str] = []
+    old_theme = (output.controls or {}).get("theme", "corporate_blue")
+    new_theme = body.config.theme or old_theme
+    if old_theme != new_theme:
+        summary.append(f"Theme: {old_theme} → {new_theme}")
+
+    old_detail = (output.controls or {}).get("detail_level", "balanced")
+    new_detail = body.config.content_detail or old_detail
+    if old_detail != new_detail:
+        summary.append(f"Detail level: {old_detail.capitalize()} → {new_detail.capitalize()}")
+
+    if body.config.audience and body.config.audience != output.audience:
+        summary.append(f"Audience: {output.audience} → {body.config.audience}")
+
+    old_count = len([n for n in current_ir.nodes if n.kind == "slide"])
+    new_count = len([n for n in new_ir.nodes if n.kind == "slide"])
+    if old_count != new_count:
+        summary.append(f"Slide count: {old_count} → {new_count}")
+
+    for idx, (old_node, new_node) in enumerate(zip(current_ir.nodes, new_ir.nodes), start=1):
+        if old_node.kind == "slide" and new_node.kind == "slide":
+            if (old_node.layout or "standard_bullet") != (new_node.layout or "standard_bullet"):
+                summary.append(f"Slide {idx}: {old_node.layout or 'standard_bullet'} → {new_node.layout}")
+            elif old_node.is_user_modified or new_node.is_user_modified:
+                summary.append(f"Slide {idx}: Content edited")
+
+    if not summary:
+        summary.append("Configuration updated")
+
+    # Snapshot previous version into version_history
+    version_history = list((output.controls or {}).get("version_history", []))
+    version_history.append({
+        "version": output.version,
+        "controls": dict(output.controls or {}),
+        "content_ir": output.content_ir,
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
+    updated_controls = {
+        **(output.controls or {}),
+        "theme": new_theme,
+        "detail_level": new_detail,
+        "purpose": body.config.purpose,
+        "duration": body.config.duration,
+        "version_history": version_history,
+    }
+
+    output.controls = updated_controls
+    output.audience = get_audience(body.config.audience).key if (body.config and body.config.audience) else output.audience
+    output.language = body.config.language or output.language
+    output.content_ir = new_ir.model_dump(mode="json")
+    output.version += 1
+    output.status = "draft"
+
+    db.add(AuditLog(actor_id=user.id, entity="output", entity_id=output.id, action="reconfigure"))
+    await db.commit()
+
+    detail = await get_output(output_id, db, user)
+    quality_warnings = check_deck_quality(new_ir, detail_level=new_detail)
+
+    return PresentationReconfigureResponse(
+        output=detail,
+        change_summary=summary,
+        warnings=quality_warnings,
+    )
+
+
+@router.post("/outputs/{output_id}/revert", response_model=OutputDetail)
+async def revert_presentation(
+    output_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    body: PresentationRevertRequest | None = None,
+) -> OutputDetail:
+    """Revert presentation to the previous version in history."""
+    output = await _owned_output(db, user, output_id)
+    history = list((output.controls or {}).get("version_history", []))
+    if not history:
+        raise HTTPException(400, "No previous version available to revert.")
+
+    last_snap = history.pop()
+    output.content_ir = last_snap["content_ir"]
+    output.controls = {**last_snap["controls"], "version_history": history}
+    output.version = max(1, output.version - 1)
+    output.status = "draft"
+
+    db.add(AuditLog(actor_id=user.id, entity="output", entity_id=output.id, action="revert"))
+    await db.commit()
+
+    return await get_output(output_id, db, user)
+
+
+@router.post("/outputs/{output_id}/adjust-outline", response_model=PresentationOutlineResponse)
+async def adjust_presentation_outline(
+    output_id: uuid.UUID,
+    body: SlideCountAdjustRequest,
+    db: DbSession,
+    user: CurrentUser,
+) -> PresentationOutlineResponse:
+    """Propose slide count adjustments (add or consolidate slides) based on source facts."""
+    output = await _owned_output(db, user, output_id)
+    sheet = await db.scalar(
+        select(FactSheet)
+        .where(FactSheet.id == output.fact_sheet_id)
+        .options(selectinload(FactSheet.facts))
+    )
+    if sheet is None or not sheet.facts:
+        raise HTTPException(409, "Fact sheet not found for this presentation.")
+
+    current_ir = ContentIR.model_validate(output.content_ir)
+    current_slides = [n for n in current_ir.nodes if n.kind == "slide"]
+
+    target_count = int(body.target_count) if body.target_count.isdigit() else (len(current_slides) + 1)
+    target_content_count = max(1, target_count - 1)
+
+    outline_items = [
+        SlideOutlineItem(
+            id=node.id,
+            title=node.title or f"Slide {idx+2}",
+            key_message=node.text or (node.items[0] if node.items else "Key message"),
+            summary="; ".join((node.items or [])[:3]),
+            suggested_layout=node.layout or "standard_bullet",
+            fact_ids=node.fact_ids,
+        )
+        for idx, node in enumerate(current_slides)
+    ]
+
+    if target_content_count > len(outline_items):
+        facts = sorted(sheet.facts, key=lambda f: (f.type, f.key))
+        layouts = ['two_column', 'process', 'metrics', 'table', 'key_takeaways', 'references']
+        for i in range(len(outline_items) + 1, target_content_count + 1):
+            outline_items.append(
+                SlideOutlineItem(
+                    id=f"n_new_{i}",
+                    title=f"Detailed Findings & Action Plan Part {i}",
+                    key_message="Strategic recommendations and verified source details.",
+                    summary="Overview of additional source facts and implementation steps.",
+                    suggested_layout=layouts[(i - 1) % len(layouts)],
+                    fact_ids=[str(facts[min(i, len(facts)-1)].id)] if facts else [],
+                )
+            )
+    elif target_content_count < len(outline_items) and target_content_count >= 1:
+        non_modified = [s for s in outline_items if not any(n.is_user_modified for n in current_slides if n.id == s.id)]
+        modified = [s for s in outline_items if any(n.is_user_modified for n in current_slides if n.id == s.id)]
+        
+        kept = (modified + non_modified)[:target_content_count]
+        outline_items = sorted(kept, key=lambda s: next((i for i, orig in enumerate(outline_items) if orig.id == s.id), 999))
+
+    return PresentationOutlineResponse(
+        title=current_ir.title,
+        slides=outline_items,
     )
 
 

@@ -57,9 +57,16 @@ class Node(BaseModel):
         default=None, description="table rows, first row is header"
     )
     severity: Severity | None = None
+    layout: str | None = Field(
+        default=None,
+        description="slide layout type e.g. standard_bullet, two_column, process, timeline, metrics, comparison, image_caption, table, key_takeaways, references",
+    )
     fact_ids: list[str] = Field(
         default_factory=list,
         description="labels of the facts this node is built from, e.g. ['f2','f7']",
+    )
+    is_user_modified: bool = Field(
+        default=False, description="True if this node was manually edited by the user"
     )
 
 

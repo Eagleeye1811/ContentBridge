@@ -93,7 +93,14 @@ class UnknownAudience(ValueError):
 
 
 def get_audience(key: str) -> AudienceProfile:
-    profile = AUDIENCES.get(key)
+    alias = {
+        "officials": "officer",
+        "senior_leadership": "management",
+        "team": "technical",
+        "researchers": "technical",
+        "students": "public",
+    }.get(key, key)
+    profile = AUDIENCES.get(alias) or AUDIENCES.get(key)
     if profile is None:
         raise UnknownAudience(
             f"Unknown audience {key!r}. Available: {', '.join(sorted(AUDIENCES))}"

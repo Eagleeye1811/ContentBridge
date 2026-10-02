@@ -101,6 +101,12 @@ export default function OutputReview() {
             {output.version > 1 && ` · version ${output.version}`}
           </p>
         </div>
+        {type === 'ppt' && (
+          <Button onClick={() => navigate(`/formats/ppt?edit=${id}`)}>
+            <Icon name="edit" />
+            Edit Presentation
+          </Button>
+        )}
       </div>
 
       {error && <Notice tone="bad">{error}</Notice>}

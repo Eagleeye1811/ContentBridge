@@ -136,8 +136,32 @@ export const api = {
       body: JSON.stringify({ content_ir: contentIr }),
     }),
   regenerate: (id: string) => request<Job>(`/outputs/${id}/regenerate`, { method: 'POST' }),
-  exportUrl: (id: string, format: string, citations = false) =>
-    objectUrl(`/outputs/${id}/export?format=${format}&citations=${citations}`),
+  generatePresentationOutline: (documentId: string, body: import('@/types/api').PresentationOutlineRequest) =>
+    request<import('@/types/api').PresentationOutlineResponse>(`/documents/${documentId}/presentation-outline`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  regenerateSlide: (outputId: string, slideId: string, instructions?: string) =>
+    request<OutputDetail>(`/outputs/${outputId}/slides/${slideId}/regenerate`, {
+      method: 'POST',
+      body: JSON.stringify({ instructions }),
+    }),
+  reconfigurePresentation: (id: string, body: import('@/types/api').PresentationReconfigureRequest) =>
+    request<import('@/types/api').PresentationReconfigureResponse>(`/outputs/${id}/reconfigure`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  revertPresentation: (id: string) =>
+    request<OutputDetail>(`/outputs/${id}/revert`, {
+      method: 'POST',
+    }),
+  adjustSlideCount: (id: string, body: import('@/types/api').SlideCountAdjustRequest) =>
+    request<import('@/types/api').PresentationOutlineResponse>(`/outputs/${id}/adjust-outline`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  exportUrl: (id: string, format: string, citations = false, theme = 'navy_white') =>
+    objectUrl(`/outputs/${id}/export?format=${format}&citations=${citations}&theme=${theme}`),
   sendEmail: (id: string, body: { to_email: string; cc_emails?: string[]; note?: string }) =>
     request<{
       success: boolean

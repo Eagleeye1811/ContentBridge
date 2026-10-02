@@ -901,7 +901,7 @@ def render(
         "<!doctype html>\n"
         '<html lang="en"><head><meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{escape(ir.title)} - ContentBridge Official Report</title>\n"
+        f"<title>{escape(ir.title)}</title>\n"
         f"<style>{CSS}</style></head>\n"
         f"<body>\n"
         f'<div class="document-container">\n'

@@ -180,12 +180,34 @@ export interface IRNode {
   notes?: string | null
   rows?: string[][] | null
   severity?: 'info' | 'low' | 'medium' | 'high' | 'critical' | null
+  layout?: string | null
   fact_ids: string[]
+  is_user_modified?: boolean
 }
 
 export interface ContentIR {
   title: string
   nodes: IRNode[]
+}
+
+export interface PresentationReconfigureRequest {
+  config: PresentationOutlineRequest
+  scope?: 'all' | 'selected'
+  selected_slide_ids?: string[]
+  preserve_user_edits?: boolean
+  content_ir?: ContentIR
+}
+
+export interface PresentationReconfigureResponse {
+  output: OutputDetail
+  change_summary: string[]
+  proposed_outline?: PresentationOutlineResponse | null
+  warnings?: string[]
+}
+
+export interface SlideCountAdjustRequest {
+  target_count: string
+  config: PresentationOutlineRequest
 }
 
 export interface Output {
@@ -260,6 +282,8 @@ export interface GenerateRequest extends Partial<Controls> {
   /** Optional: each output type picks a suitable audience when left out. */
   audience?: string
   languages: string[]
+  /** Optional writing & presentation controls dictionary */
+  controls?: Record<string, string>
   /** Format-specific options keyed by output type, e.g. { ppt: { slides: 'short' } }. */
   options?: Record<string, Record<string, string>>
 }
@@ -396,6 +420,34 @@ export interface AuditEntry {
   action: string
   payload: Record<string, unknown> | null
   created_at: string
+}
+
+export interface PresentationOutlineRequest {
+  title?: string
+  purpose?: string
+  audience?: string
+  slide_count?: string
+  duration?: string
+  language?: string
+  content_detail?: string
+  theme?: string
+  visual_preference?: string
+  speaker_notes?: boolean
+  additional_instructions?: string
+}
+
+export interface SlideOutlineItem {
+  id: string
+  title: string
+  key_message: string
+  summary: string
+  suggested_layout?: string
+  fact_ids?: string[]
+}
+
+export interface PresentationOutlineResponse {
+  title: string
+  slides: SlideOutlineItem[]
 }
 
 export interface SendEmailRequest {

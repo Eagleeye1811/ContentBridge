@@ -345,12 +345,13 @@ async def generate_outputs(
                     failures.append(f"{label}: {exc}")
                     continue
 
+                aud_key = get_audience(req["audience"]).key
                 previous = await db.scalar(
                     select(Output)
                     .where(
                         Output.document_id == document_id,
                         Output.type == req["type"],
-                        Output.audience == req["audience"],
+                        Output.audience.in_([req["audience"], aud_key]),
                         Output.language == req["language"],
                     )
                     .order_by(Output.version.desc())
@@ -359,7 +360,7 @@ async def generate_outputs(
                     document_id=document_id,
                     fact_sheet_id=sheet.id,
                     type=req["type"],
-                    audience=req["audience"],
+                    audience=aud_key,
                     language=req["language"],
                     controls={**(req.get("controls") or {}), "format": req.get("options") or {}},
                     status="draft",
