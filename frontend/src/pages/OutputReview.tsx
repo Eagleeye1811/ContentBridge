@@ -105,7 +105,7 @@ export default function OutputReview() {
 
       {error && <Notice tone="bad">{error}</Notice>}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_19.5rem]">
         <div className="min-w-0">
           {editing ? (
             <div className="mx-auto max-w-3xl rounded-xl border border-ink-200 bg-white p-6 shadow-sm">
@@ -117,6 +117,8 @@ export default function OutputReview() {
               ir={draft}
               audience={output.audience}
               options={output.controls?.format}
+              outputId={id}
+              facts={output.facts}
             />
           )}
         </div>

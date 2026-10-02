@@ -6,7 +6,7 @@ import LinkedInPreview from '@/components/preview/LinkedInPreview'
 import PressReleasePreview from '@/components/preview/PressReleasePreview'
 import TwitterPreview from '@/components/preview/TwitterPreview'
 import VideoPreview from '@/components/preview/VideoPreview'
-import type { ContentIR } from '@/types/api'
+import type { ContentIR, Fact } from '@/types/api'
 
 const AUDIENCE: Record<string, string> = {
   officer: 'Staff',
@@ -22,17 +22,28 @@ export default function OutputPreview({
   ir,
   audience,
   options = {},
+  outputId,
+  facts,
 }: {
   type: string
   ir: ContentIR
   audience: string
   options?: Record<string, string>
+  outputId?: string
+  facts?: Fact[]
 }) {
   switch (type) {
     case 'ppt':
       return <DeckPreview ir={ir} />
     case 'email':
-      return <EmailPreview ir={ir} audience={AUDIENCE[audience] ?? audience} />
+      return (
+        <EmailPreview
+          ir={ir}
+          audience={AUDIENCE[audience] ?? audience}
+          outputId={outputId}
+          options={options}
+        />
+      )
     case 'press_release':
       return <PressReleasePreview ir={ir} />
     case 'linkedin':
@@ -45,12 +56,12 @@ export default function OutputPreview({
     case 'video':
       return <VideoPreview ir={ir} screen={options.screen} />
     case 'advisory':
-      return <DocumentPreview ir={ir} kicker="Advisory" />
+      return <DocumentPreview ir={ir} kicker="Advisory" facts={facts} />
     case 'summary':
-      return <DocumentPreview ir={ir} kicker="Executive summary" />
+      return <DocumentPreview ir={ir} kicker="Executive summary" facts={facts} />
     case 'report':
-      return <DocumentPreview ir={ir} kicker="Report" />
+      return <DocumentPreview ir={ir} kicker="Report" facts={facts} />
     default:
-      return <DocumentPreview ir={ir} kicker="" />
+      return <DocumentPreview ir={ir} kicker="" facts={facts} />
   }
 }

@@ -138,6 +138,19 @@ export const api = {
   regenerate: (id: string) => request<Job>(`/outputs/${id}/regenerate`, { method: 'POST' }),
   exportUrl: (id: string, format: string, citations = false) =>
     objectUrl(`/outputs/${id}/export?format=${format}&citations=${citations}`),
+  sendEmail: (id: string, body: { to_email: string; cc_emails?: string[]; note?: string }) =>
+    request<{
+      success: boolean
+      recipient: string
+      subject: string
+      message_id: string
+      sent_at: string
+      delivery_mode: string
+      detail: string
+    }>(`/outputs/${id}/send-email`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   verifyOutput: (id: string) => request<Job>(`/outputs/${id}/verify`, { method: 'POST' }),
   getClaims: (id: string) => request<VerificationSummary>(`/outputs/${id}/claims`),

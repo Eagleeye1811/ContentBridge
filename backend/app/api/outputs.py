@@ -35,8 +35,11 @@ from app.schemas.outputs import (
     OutputDetail,
     OutputListItem,
     OutputOut,
+    SendEmailRequest,
+    SendEmailResponse,
 )
 from app.services.access import can_create
+from app.services.email_dispatch import send_official_email
 from app.services.generation.audiences import AUDIENCES, LANGUAGES
 from app.services.generation.controls import (
     DEFAULT_CONTROLS,
@@ -364,13 +367,12 @@ async def export_output(
     # Resolve fact ids to human-readable citations for the appendix. Renderers
     # stay pure: they are handed the strings, they do not look anything up.
     citation_map: dict[str, str] = {}
-    if citations:
-        sheet = await db.scalar(
-            select(FactSheet)
-            .where(FactSheet.id == output.fact_sheet_id)
-            .options(selectinload(FactSheet.facts).selectinload(Fact.evidence))
-        )
-        if sheet is not None:
+    sheet = await db.scalar(
+        select(FactSheet)
+        .where(FactSheet.id == output.fact_sheet_id)
+        .options(selectinload(FactSheet.facts).selectinload(Fact.evidence))
+    )
+    if sheet is not None:
             blocks = {
                 b.id: b
                 for b in await db.scalars(
@@ -424,3 +426,69 @@ async def export_output(
         media_type=renderer.media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/outputs/{id}/send-email", response_model=SendEmailResponse)
+async def dispatch_output_email(
+    id: uuid.UUID,
+    req: SendEmailRequest,
+    db: DbSession,
+    user: CurrentUser,
+) -> SendEmailResponse:
+    """Send the generated email to a target recipient."""
+    output = await db.get(Output, id)
+    if output is None:
+        raise HTTPException(status_code=404, detail="Output not found")
+
+    if not req.to_email or "@" not in req.to_email:
+        raise HTTPException(status_code=400, detail="A valid recipient email is required.")
+
+    ir = ContentIR.model_validate(output.content_ir)
+    subject = ir.title or "Official Communication"
+
+    # Render email content
+    from app.services.rendering import html_writer, text
+
+    body_text = text.render(ir, output_type="email")
+    if req.note:
+        body_text = f"Sender Note:\n{req.note}\n\n---\n\n{body_text}"
+
+    body_html = html_writer.render(ir, output_type="email")
+
+    try:
+        result = await send_official_email(
+            to_email=req.to_email.strip(),
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+            cc_emails=[c.strip() for c in req.cc_emails if c.strip()] if req.cc_emails else None,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Email delivery error: {exc}") from exc
+
+    db.add(
+        AuditLog(
+            actor_id=user.id,
+            entity="output",
+            entity_id=output.id,
+            action="send_email",
+            payload={
+                "recipient": req.to_email,
+                "cc": req.cc_emails,
+                "message_id": result.message_id,
+                "delivery_mode": result.delivery_mode,
+            },
+        )
+    )
+    await db.commit()
+
+    return SendEmailResponse(
+        success=result.success,
+        recipient=result.recipient,
+        subject=result.subject,
+        message_id=result.message_id,
+        sent_at=result.sent_at,
+        delivery_mode=result.delivery_mode,
+        detail=result.detail,
+    )
+

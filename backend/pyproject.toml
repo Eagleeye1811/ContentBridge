@@ -2,7 +2,7 @@
 name = "contentbridge-api"
 version = "0.1.0"
 description = "Gen AI platform for automated content transformation (SIH 2026, PS 26154)"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     # Web
     "fastapi>=0.115",

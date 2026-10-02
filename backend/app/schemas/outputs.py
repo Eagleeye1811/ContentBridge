@@ -117,3 +117,20 @@ class CatalogOut(BaseModel):
     objectives: list[ControlInfo]
     styles: list[ControlInfo]
     defaults: dict[str, str]
+
+
+class SendEmailRequest(BaseModel):
+    to_email: str
+    cc_emails: list[str] | None = None
+    note: str | None = None
+
+
+class SendEmailResponse(BaseModel):
+    success: bool
+    recipient: str
+    subject: str
+    message_id: str
+    sent_at: str
+    delivery_mode: str
+    detail: str
+

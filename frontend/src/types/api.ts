@@ -397,3 +397,20 @@ export interface AuditEntry {
   payload: Record<string, unknown> | null
   created_at: string
 }
+
+export interface SendEmailRequest {
+  to_email: string
+  cc_emails?: string[]
+  note?: string
+}
+
+export interface SendEmailResponse {
+  success: boolean
+  recipient: string
+  subject: string
+  message_id: string
+  sent_at: string
+  delivery_mode: string
+  detail: string
+}
+
