@@ -305,7 +305,7 @@ export default function PPTStudio({
         },
         options: {
           ppt: {
-            slides: String(outline?.slides.length || 8),
+            slides: config.slide_count !== 'auto' ? String(config.slide_count) : '8',
             presenting_to: config.audience || 'officials',
           },
         },
@@ -668,7 +668,6 @@ export default function PPTStudio({
           {[
             { num: 1, label: 'Source' },
             { num: 2, label: 'Configure' },
-            { num: 3, label: 'Outline' },
             { num: 4, label: 'Generate' },
             { num: 5, label: isEditingWorkspace ? 'Editor Workspace' : 'Preview & Export' },
           ].map((s) => (
@@ -863,9 +862,9 @@ export default function PPTStudio({
             <Button variant="ghost" onClick={() => setStep(1)}>
               Back
             </Button>
-            <Button onClick={handleGenerateOutline} disabled={generatingOutline}>
+            <Button onClick={handleApproveAndGenerateDeck} disabled={generatingDeck}>
               <Icon name="spark" />
-              {generatingOutline ? 'Structuring Outline…' : 'Generate AI Slide Outline'}
+              {generatingDeck ? 'Generating Presentation…' : 'Generate Presentation'}
             </Button>
           </div>
         </div>

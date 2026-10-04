@@ -45,10 +45,13 @@ from app.schemas.outputs import (
     SlideRegenerateRequest,
     SendEmailRequest,
     SendEmailResponse,
+    SlideOutlineItem,
 )
 from app.services.access import can_create
 from app.services.email_dispatch import send_official_email
-from app.services.generation.audiences import AUDIENCES, LANGUAGES
+from app.services.generation.prompt_builder import render_facts
+from app.services.llm import get_llm
+from app.services.generation.audiences import AUDIENCES, LANGUAGES, get_audience, UnknownAudience
 from app.services.generation.controls import (
     DEFAULT_CONTROLS,
     DETAIL_LEVELS,

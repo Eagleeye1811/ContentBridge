@@ -170,12 +170,14 @@ export default function OutputReview() {
                   wide
                 >
                   <Icon name="edit" />
-                  Edit the text
+                  {type === 'ppt' ? 'Open Presentation Editor' : 'Edit the text'}
                 </Button>
-                <Button variant="secondary" onClick={rewrite} disabled={busy !== null} wide>
-                  <Icon name="spark" />
-                  {busy === 'rewrite' ? 'Writing…' : 'Write a new version'}
-                </Button>
+                {type !== 'ppt' && (
+                  <Button variant="secondary" onClick={rewrite} disabled={busy !== null} wide>
+                    <Icon name="spark" />
+                    {busy === 'rewrite' ? 'Writing…' : 'Write a new version'}
+                  </Button>
+                )}
               </div>
             </>
           )}
