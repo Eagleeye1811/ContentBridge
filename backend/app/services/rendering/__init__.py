@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.schemas.content_ir import ContentIR
 from app.services.rendering import html_writer, markdown, srt, text
 
 
@@ -26,6 +25,11 @@ def _render_pptx(ir: ContentIR, **kwargs: object) -> bytes:
 def _render_mp4(ir: ContentIR, **kwargs: object) -> bytes:
     from app.services.rendering import video_renderer
     return video_renderer.render(ir, **kwargs)
+
+
+def _render_pdf(ir: ContentIR, **kwargs: object) -> bytes:
+    from app.services.rendering import pdf_writer
+    return pdf_writer.render(ir, **kwargs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,14 @@ RENDERERS: dict[str, RendererSpec] = {
             "video/mp4",
             True,
             _render_mp4,
+        ),
+        RendererSpec(
+            "pdf",
+            "PDF Document",
+            "pdf",
+            "application/pdf",
+            True,
+            _render_pdf,
         ),
     )
 }

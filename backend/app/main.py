@@ -1,4 +1,4 @@
-"""FastAPI application factory."""
+"""FastAPI application factory for ContentBridge."""
 
 import logging
 

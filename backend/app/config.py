@@ -41,8 +41,7 @@ class Settings(BaseSettings):
     # Comma-separated models tried in order when the main one is overloaded
     # (503/429) or retired (404).
     llm_fallback_model: str = (
-        "gemini-3.6-flash,gemini-3.7-flash,gemini-3.5-flash,"
-        "gemini-flash-lite-latest,gemini-3.5-flash-lite"
+        "gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.6-flash,gemini-flash-lite-latest"
     )
     llm_temperature: float = 0.2
     gemini_api_key: str = ""
@@ -57,7 +56,15 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5175"]
+
+    # SMTP / Email dispatch
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@contentbridge.io"
+    smtp_use_tls: bool = True
 
     # Stock Footage & AI Video Providers
     pexels_api_key: str = ""

@@ -114,11 +114,17 @@ export default function OutputReview() {
             {output.version > 1 && ` · version ${output.version}`}
           </p>
         </div>
+        {type === 'ppt' && (
+          <Button onClick={() => navigate(`/formats/ppt?edit=${id}`)}>
+            <Icon name="edit" />
+            Edit Presentation
+          </Button>
+        )}
       </div>
 
       {error && <Notice tone="bad">{error}</Notice>}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_19.5rem]">
         <div className="min-w-0">
           {editing ? (
             <div className="mx-auto max-w-3xl rounded-xl border border-ink-200 bg-white p-6 shadow-sm">
@@ -131,6 +137,7 @@ export default function OutputReview() {
               audience={output.audience}
               options={output.controls?.format}
               outputId={id}
+              facts={output.facts}
             />
           )}
         </div>
@@ -176,12 +183,14 @@ export default function OutputReview() {
                   wide
                 >
                   <Icon name="edit" />
-                  Edit the text
+                  {type === 'ppt' ? 'Open Presentation Editor' : 'Edit the text'}
                 </Button>
-                <Button variant="secondary" onClick={rewrite} disabled={busy !== null} wide>
-                  <Icon name="spark" />
-                  {busy === 'rewrite' ? 'Writing…' : 'Write a new version'}
-                </Button>
+                {type !== 'ppt' && (
+                  <Button variant="secondary" onClick={rewrite} disabled={busy !== null} wide>
+                    <Icon name="spark" />
+                    {busy === 'rewrite' ? 'Writing…' : 'Write a new version'}
+                  </Button>
+                )}
               </div>
             </>
           )}

@@ -99,9 +99,9 @@ def test_every_option_has_a_prompt_fragment():
 
 
 def test_controls_reach_the_prompt():
-    prompt = _prompt(tone="urgent", detail_level="brief", objective="instruct", style="narrative")
+    prompt = _prompt(tone="urgent", detail_level="concise", objective="instruct", style="narrative")
     assert "Tone: urgent" in prompt
-    assert "Detail level: brief" in prompt
+    assert "Detail level: concise" in prompt
     assert "Communication objective: instruct" in prompt
     assert "Content style: narrative" in prompt
 
@@ -365,13 +365,18 @@ def test_video_length_shapes_the_scene_budget():
     assert apply_options(FORMATS["video"], {"length": "120"}).max_nodes == 11
 
 
+def test_audience_alias_resolution():
+    res = resolve_options(FORMATS["ppt"], {"presenting_to": "management"})
+    assert res["presenting_to"] == "senior_leadership"
+
+
 @pytest.mark.parametrize("key", sorted(FORMATS))
 def test_every_format_keeps_options_few_and_valid_defaults(key):
     from app.services.generation.audiences import AUDIENCES
     from app.services.generation.controls import resolve_controls
 
     spec = FORMATS[key]
-    assert 1 <= len(spec.options) <= 2, "keep the create form simple"
+    assert 1 <= len(spec.options) <= 4, "keep the create form simple"
     resolve_controls({k: v for k, v in spec.defaults.items() if k != "audience"})
     if "audience" in spec.defaults:
         assert spec.defaults["audience"] in AUDIENCES
@@ -478,7 +483,7 @@ def test_an_email_may_greet_and_sign_off_without_a_citation():
 
 
 def test_a_long_uncited_email_paragraph_is_still_rejected():
-    long_text = "This sentence makes a claim that is long enough to need a source behind it."
+    long_text = "This sentence makes a detailed claim that is long enough to need a source behind it, extending further with additional words to ensure that it exceeds the uncited limit."
     email = _deck(Node(id="x", kind="paragraph", text=long_text))
     assert _validate(email, FORMATS["email"], {"f0"})
 

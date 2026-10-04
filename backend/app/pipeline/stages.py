@@ -345,25 +345,36 @@ async def generate_outputs(
                     failures.append(f"{label}: {exc}")
                     continue
 
+                aud_key = get_audience(req["audience"]).key
                 previous = await db.scalar(
                     select(Output)
                     .where(
                         Output.document_id == document_id,
                         Output.type == req["type"],
-                        Output.audience == req["audience"],
+                        Output.audience.in_([req["audience"], aud_key]),
                         Output.language == req["language"],
                     )
                     .order_by(Output.version.desc())
                 )
+                final_ir = result.content_ir
+                if req["type"] == "ppt":
+                    from app.services.rendering.layout_validator import validate_and_autofix_deck
+                    final_ir, fixes = validate_and_autofix_deck(
+                        final_ir,
+                        detail_level=(req.get("controls") or {}).get("detail_level", "balanced"),
+                    )
+                    if fixes:
+                        log.info("%s auto-fixed layout issues: %s", label, "; ".join(fixes))
+
                 output = Output(
                     document_id=document_id,
                     fact_sheet_id=sheet.id,
                     type=req["type"],
-                    audience=req["audience"],
+                    audience=aud_key,
                     language=req["language"],
                     controls={**(req.get("controls") or {}), "format": req.get("options") or {}},
                     status="draft",
-                    content_ir=result.content_ir.model_dump(mode="json"),
+                    content_ir=final_ir.model_dump(mode="json"),
                     version=(previous.version + 1) if previous else 1,
                     model=result.model,
                 )

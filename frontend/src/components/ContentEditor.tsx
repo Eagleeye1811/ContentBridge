@@ -67,6 +67,26 @@ export default function ContentEditor({
               />
             </label>
           ))}
+          {node.kind === 'slide' && (
+            <label className="block">
+              <span className="text-xs font-medium text-ink-400">Slide Layout</span>
+              <select
+                value={node.layout || 'standard_bullet'}
+                onChange={(e) => patch(node.id, { layout: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-1.5 text-xs outline-none focus:border-brand-500"
+              >
+                <option value="standard_bullet">Standard Bullets</option>
+                <option value="two_column">Two-Column Split</option>
+                <option value="process">Process Flow</option>
+                <option value="timeline">Timeline</option>
+                <option value="metrics">Key Metrics</option>
+                <option value="comparison">Comparison</option>
+                <option value="table">Data Table</option>
+                <option value="section_divider">Section Divider</option>
+                <option value="references">References</option>
+              </select>
+            </label>
+          )}
           {node.kind === 'table' && (
             <p className="text-xs text-ink-400">Tables can be edited after downloading.</p>
           )}

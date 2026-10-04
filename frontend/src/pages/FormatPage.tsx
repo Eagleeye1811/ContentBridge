@@ -3,6 +3,7 @@ import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '@/api/client'
 import CreateForm from '@/components/CreateForm'
 import OutputGrid from '@/components/OutputGrid'
+import PPTStudio from '@/components/PPTStudio'
 import { Button, Empty, Notice } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
 import { FORMAT_KEYS, latestOnly, typeOf } from '@/lib/formats'
@@ -53,8 +54,8 @@ export default function FormatPage() {
   const permitted = user?.allowed_types.includes(format.key) ?? false
   const name = format.name.toLowerCase()
   const plural = name.endsWith('y') ? `${name.slice(0, -1)}ies` : `${name}s`
-  // Open by default when nothing exists yet, or when a source was handed over.
-  const open = permitted && (creating ?? (mine.length === 0 || params.has('source')))
+  // Open by default when nothing exists yet, or when a source/edit was handed over.
+  const open = permitted && (creating ?? (mine.length === 0 || params.has('source') || params.has('edit')))
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -82,7 +83,22 @@ export default function FormatPage() {
         </Notice>
       )}
 
-      {open && (
+      {open && key === 'ppt' ? (
+        <PPTStudio
+          key={format.key}
+          format={format}
+          sources={sources}
+          languages={Object.keys(catalog.languages)}
+          initialSource={params.get('source') ?? undefined}
+          initialEditId={params.get('edit') ?? undefined}
+          onCancel={mine.length > 0 ? () => setCreating(false) : undefined}
+          onCreated={(ids) => {
+            setFresh(ids)
+            setCreating(false)
+            reload()
+          }}
+        />
+      ) : open ? (
         <CreateForm
           key={format.key}
           format={format}
@@ -96,7 +112,7 @@ export default function FormatPage() {
             reload()
           }}
         />
-      )}
+      ) : null}
 
       <section>
         <div className="mb-4 flex items-baseline gap-2">
