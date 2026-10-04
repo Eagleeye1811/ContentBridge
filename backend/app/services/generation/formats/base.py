@@ -74,6 +74,23 @@ def resolve_options(spec: FormatSpec, values: dict[str, str] | None) -> dict[str
         if option is None:
             raise UnknownFormatOption(f"{spec.name} has no option {key!r}")
         if option.choice(value) is None:
+            if value and str(value).isdigit():
+                num_val = int(value)
+                num_choices = [
+                    (int(c.key), c.key) for c in option.choices if c.key.isdigit()
+                ]
+                if num_choices:
+                    min_val = min(item[0] for item in num_choices)
+                    max_val = max(item[0] for item in num_choices)
+                    if min_val <= num_val <= max_val:
+                        value = min(num_choices, key=lambda item: abs(item[0] - num_val))[1]
+
+        if option.choice(value) is None:
+            aud_match = next((c.key for c in option.choices if c.audience == value), None)
+            if aud_match is not None:
+                value = aud_match
+
+        if option.choice(value) is None:
             allowed = ", ".join(c.key for c in option.choices)
             raise UnknownFormatOption(
                 f"{option.label} cannot be {value!r} for {spec.name}. Choose from: {allowed}"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 import uuid
 
@@ -7,6 +8,8 @@ import anyio
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
+
+log = logging.getLogger(__name__)
 
 from app.api.deps import CurrentUser, DbSession
 from app.api.facts import _serialize as serialize_sheet
@@ -49,6 +52,7 @@ from app.schemas.outputs import (
 )
 from app.services.access import can_create
 from app.services.email_dispatch import send_official_email
+from app.services.generation.generator import generate
 from app.services.generation.prompt_builder import render_facts
 from app.services.llm import get_llm
 from app.services.generation.audiences import AUDIENCES, LANGUAGES, get_audience, UnknownAudience
@@ -64,6 +68,7 @@ from app.services.generation.controls import (
 from app.services.generation.formats import FORMATS, UnknownFormat, get_format
 from app.services.generation.formats.base import (
     UnknownFormatOption,
+    apply_options,
     chosen_audience,
     resolve_options,
 )
@@ -305,7 +310,12 @@ async def update_output(
     if output.status == "approved":
         raise HTTPException(409, "Approved outputs cannot be edited. Regenerate a new version.")
 
-    output.content_ir = body.content_ir.model_dump(mode="json")
+    ir = body.content_ir
+    if output.type == "ppt":
+        from app.services.rendering.layout_validator import validate_and_autofix_deck
+        ir, _ = validate_and_autofix_deck(ir)
+
+    output.content_ir = ir.model_dump(mode="json")
 
     # Any edit invalidates the prior verification completely. Clearing the
     # score but leaving `verified_at` and the claim rows in place would let an
@@ -518,6 +528,9 @@ Produce the updated single DraftNode for this slide. Keep kind as 'slide'. Cite 
 
     new_nodes = [new_node if n.id == slide_id else n for n in ir.nodes]
     updated_ir = ContentIR(title=ir.title, nodes=new_nodes)
+    if output.type == "ppt":
+        from app.services.rendering.layout_validator import validate_and_autofix_deck
+        updated_ir, _ = validate_and_autofix_deck(updated_ir)
 
     output.content_ir = updated_ir.model_dump(mode="json")
     output.status = "draft"
@@ -633,71 +646,179 @@ async def reconfigure_presentation(
     db: DbSession,
     user: CurrentUser,
 ) -> PresentationReconfigureResponse:
-    """Reconfigure an existing presentation: theme, detail level, audience, slide count, and individual slide content."""
+    """Reconfigure an existing presentation: theme, detail level, audience, purpose, language, and slide content."""
     output = await _owned_output(db, user, output_id)
     if output.status == "approved":
         raise HTTPException(409, "Approved outputs cannot be reconfigured. Regenerate a new version.")
 
-    if body.config and body.config.audience:
-        try:
-            get_audience(body.config.audience)
-        except UnknownAudience as exc:
-            raise HTTPException(422, str(exc)) from exc
-
-    current_ir = ContentIR.model_validate(output.content_ir)
-    new_ir = body.content_ir if body.content_ir else current_ir
-
-    # Compute change summary log
     summary: list[str] = []
-    old_theme = (output.controls or {}).get("theme", "corporate_blue")
-    new_theme = body.config.theme or old_theme
+
+    curr_controls = output.controls or {}
+    old_theme = curr_controls.get("theme", "corporate_blue")
+    old_detail = curr_controls.get("detail_level", "balanced")
+    old_purpose = curr_controls.get("purpose", "executive briefing")
+    old_audience = output.audience
+    old_lang = output.language
+    current_ir = ContentIR.model_validate(output.content_ir)
+    old_title = current_ir.title or ""
+
+    new_theme = body.config.theme if (body.config and body.config.theme) else old_theme
+    new_detail = body.config.content_detail if (body.config and body.config.content_detail) else old_detail
+    new_purpose = body.config.purpose if (body.config and body.config.purpose) else old_purpose
+    new_audience = body.config.audience if (body.config and body.config.audience) else old_audience
+    new_lang = body.config.language if (body.config and body.config.language) else old_lang
+    new_title = (
+        body.config.title.strip()
+        if (body.config and body.config.title is not None and body.config.title.strip())
+        else old_title
+    )
+    new_duration = body.config.duration if (body.config and body.config.duration) else curr_controls.get("duration", "10")
+    new_instructions = body.config.additional_instructions if (body.config and body.config.additional_instructions) else ""
+
+    # Validate target audience
+    try:
+        aud_profile = get_audience(new_audience)
+    except UnknownAudience as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    # Determine if AI slide regeneration is required
+    old_aud_profile = get_audience(old_audience)
+    needs_content_regen = (
+        old_detail != new_detail or
+        old_purpose != new_purpose or
+        old_aud_profile.key != aud_profile.key or
+        old_lang != new_lang or
+        (new_instructions and new_instructions != curr_controls.get("additional_instructions", "")) or
+        (body.config and body.config.slide_count and body.config.slide_count != "auto")
+    )
+
+    new_ir = current_ir
+
+    if needs_content_regen:
+        if not llm_available():
+            raise HTTPException(503, "Writing is not available: no AI model is configured on the server.")
+
+        try:
+            sheet = await db.scalar(
+                select(FactSheet)
+                .where(FactSheet.id == output.fact_sheet_id)
+                .options(selectinload(FactSheet.facts))
+            )
+            if sheet and sheet.facts:
+                document = await db.get(Document, output.document_id)
+                source_name = document.filename if document else ""
+                facts = sorted(sheet.facts, key=lambda f: (f.type, f.key))
+
+                target_slides_opt = body.config.slide_count if (body.config and body.config.slide_count) else "auto"
+                spec = apply_options(
+                    get_format(output.type),
+                    {"slides": target_slides_opt, "presenting_to": new_audience}
+                )
+
+                gen_controls = resolve_controls({
+                    **{k: v for k, v in spec.defaults.items() if k != "audience"},
+                    **{k: v for k, v in curr_controls.items() if k != "version_history"},
+                    "detail_level": new_detail,
+                    "purpose": new_purpose,
+                    "duration": new_duration,
+                    "additional_instructions": new_instructions,
+                })
+
+                gen_result = await generate(
+                    facts=facts,
+                    spec=spec,
+                    audience=aud_profile,
+                    language=new_lang,
+                    source_name=source_name,
+                    controls=gen_controls,
+                )
+
+                gen_ir = gen_result.content_ir
+
+                # Preserve manually edited slides if requested
+                if body.preserve_user_edits and body.content_ir:
+                    modified_user_nodes = {
+                        n.id: n for n in body.content_ir.nodes if getattr(n, "is_user_modified", False)
+                    }
+                    if modified_user_nodes:
+                        merged_nodes = [modified_user_nodes.get(n.id, n) for n in gen_ir.nodes]
+                        gen_ir = ContentIR(title=gen_ir.title or new_title, nodes=merged_nodes)
+                        summary.append(f"Preserved {len(modified_user_nodes)} manually customized slide(s)")
+
+                new_ir = gen_ir
+
+        except Exception as exc:
+            log.exception("Reconfiguration AI generation failed for output %s", output_id)
+            raise HTTPException(
+                500,
+                f"Unable to update presentation: We couldn't regenerate the presentation with these settings. Please try again. ({exc})"
+            ) from exc
+
+    # Ensure title is updated on IR
+    if new_title:
+        new_ir = ContentIR(title=new_title, nodes=new_ir.nodes)
+
+    # Auto-fit & validate deck geometry
+    if output.type == "ppt":
+        from app.services.rendering.layout_validator import validate_and_autofix_deck
+        new_ir, fixes = validate_and_autofix_deck(new_ir, detail_level=new_detail)
+        if fixes:
+            summary.extend([f"Auto-fit: {f}" for f in fixes])
+
+    # Record summary of changes
     if old_theme != new_theme:
         summary.append(f"Theme: {old_theme} → {new_theme}")
-
-    old_detail = (output.controls or {}).get("detail_level", "balanced")
-    new_detail = body.config.content_detail or old_detail
     if old_detail != new_detail:
         summary.append(f"Detail level: {old_detail.capitalize()} → {new_detail.capitalize()}")
-
-    if body.config.audience and body.config.audience != output.audience:
-        summary.append(f"Audience: {output.audience} → {body.config.audience}")
-
-    old_count = len([n for n in current_ir.nodes if n.kind == "slide"])
-    new_count = len([n for n in new_ir.nodes if n.kind == "slide"])
-    if old_count != new_count:
-        summary.append(f"Slide count: {old_count} → {new_count}")
-
-    for idx, (old_node, new_node) in enumerate(zip(current_ir.nodes, new_ir.nodes), start=1):
-        if old_node.kind == "slide" and new_node.kind == "slide":
-            if (old_node.layout or "standard_bullet") != (new_node.layout or "standard_bullet"):
-                summary.append(f"Slide {idx}: {old_node.layout or 'standard_bullet'} → {new_node.layout}")
-            elif old_node.is_user_modified or new_node.is_user_modified:
-                summary.append(f"Slide {idx}: Content edited")
+    if old_purpose != new_purpose:
+        summary.append(f"Purpose: {old_purpose} → {new_purpose}")
+    if old_aud_profile.key != aud_profile.key:
+        summary.append(f"Audience: {old_aud_profile.key} → {aud_profile.key}")
+    if old_lang != new_lang:
+        summary.append(f"Language: {old_lang.upper()} → {new_lang.upper()}")
+    if old_title != new_title:
+        summary.append(f"Title updated: '{new_title}'")
 
     if not summary:
-        summary.append("Configuration updated")
+        summary.append("Configuration updated successfully")
 
-    # Snapshot previous version into version_history
-    version_history = list((output.controls or {}).get("version_history", []))
+    # Snapshot previous version into version_history for version revert
+    raw_history = curr_controls.get("version_history", [])
+    version_history: list[dict[str, Any]] = []
+    if isinstance(raw_history, list):
+        for snap in raw_history[-9:]:
+            if isinstance(snap, dict):
+                clean_snap_controls = {
+                    k: v for k, v in snap.get("controls", {}).items() if k != "version_history"
+                }
+                version_history.append({
+                    "version": snap.get("version"),
+                    "controls": clean_snap_controls,
+                    "content_ir": snap.get("content_ir"),
+                    "timestamp": snap.get("timestamp"),
+                })
+
+    snap_controls = {k: v for k, v in curr_controls.items() if k != "version_history"}
     version_history.append({
         "version": output.version,
-        "controls": dict(output.controls or {}),
+        "controls": snap_controls,
         "content_ir": output.content_ir,
         "timestamp": datetime.now(UTC).isoformat(),
     })
 
     updated_controls = {
-        **(output.controls or {}),
+        **snap_controls,
         "theme": new_theme,
         "detail_level": new_detail,
-        "purpose": body.config.purpose,
-        "duration": body.config.duration,
+        "purpose": new_purpose,
+        "duration": new_duration,
+        "additional_instructions": new_instructions,
         "version_history": version_history,
     }
 
     output.controls = updated_controls
-    output.audience = get_audience(body.config.audience).key if (body.config and body.config.audience) else output.audience
-    output.language = body.config.language or output.language
+    output.audience = aud_profile.key
+    output.language = new_lang
     output.content_ir = new_ir.model_dump(mode="json")
     output.version += 1
     output.status = "draft"
@@ -724,13 +845,30 @@ async def revert_presentation(
 ) -> OutputDetail:
     """Revert presentation to the previous version in history."""
     output = await _owned_output(db, user, output_id)
-    history = list((output.controls or {}).get("version_history", []))
+    raw_history = (output.controls or {}).get("version_history", [])
+    history: list[dict[str, Any]] = []
+    if isinstance(raw_history, list):
+        for snap in raw_history:
+            if isinstance(snap, dict):
+                clean_snap_controls = {
+                    k: v for k, v in snap.get("controls", {}).items() if k != "version_history"
+                }
+                history.append({
+                    "version": snap.get("version"),
+                    "controls": clean_snap_controls,
+                    "content_ir": snap.get("content_ir"),
+                    "timestamp": snap.get("timestamp"),
+                })
+
     if not history:
         raise HTTPException(400, "No previous version available to revert.")
 
     last_snap = history.pop()
     output.content_ir = last_snap["content_ir"]
-    output.controls = {**last_snap["controls"], "version_history": history}
+    clean_last_controls = {
+        k: v for k, v in last_snap.get("controls", {}).items() if k != "version_history"
+    }
+    output.controls = {**clean_last_controls, "version_history": history}
     output.version = max(1, output.version - 1)
     output.status = "draft"
 

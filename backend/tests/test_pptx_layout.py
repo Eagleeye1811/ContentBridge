@@ -67,6 +67,9 @@ def test_theme_rendering_variations():
     assert len(bg_colors) >= 3, f"Expected distinct theme background colors, got {bg_colors}"
 
 
+from app.services.rendering.layout_validator import validate_and_autofix_deck, validate_deck_geometry
+
+
 def test_layout_geometry_validator():
     """Verify validate_deck_geometry catches oversized text and empty slides."""
     ir = _make_deck(3)
@@ -74,3 +77,50 @@ def test_layout_geometry_validator():
     ir.nodes.append(Node(id="n_empty", kind="slide", title="", items=[]))
     warnings = validate_deck_geometry(ir)
     assert any("Empty slide" in w for w in warnings)
+
+
+def test_validate_and_autofix_deck():
+    """Verify validate_and_autofix_deck automatically fixes long titles, metrics overflow, bullet overflow, and empty slides."""
+    overloaded_ir = ContentIR(
+        title="Excessively Long Presentation Title That Exceeds One Hundred Characters In Length And Needs Automatic Truncation For Presentation Cover Slide",
+        nodes=[
+            # Metrics slide with >4 items
+            Node(
+                id="n_metrics",
+                kind="slide",
+                title="Metrics",
+                layout="metrics",
+                items=["$10M: Revenue", "50%: Growth", "100k: Users", "99.9%: Uptime", "5: Extra Metric", "6: Another Metric"],
+            ),
+            # Standard bullet slide with >7 items
+            Node(
+                id="n_bullets",
+                kind="slide",
+                title="Bullets",
+                layout="standard_bullet",
+                items=[f"Bullet item {i}" for i in range(1, 10)],
+            ),
+            # Empty slide
+            Node(id="n_empty", kind="slide", title="", items=[]),
+        ]
+    )
+
+    autofixed_ir, fixes = validate_and_autofix_deck(overloaded_ir)
+
+    assert len(fixes) > 0
+    assert autofixed_ir.title.endswith("...")
+    assert len(autofixed_ir.title) <= 100
+
+    # Metrics slide should be capped to 4 items and split
+    metrics_slides = [n for n in autofixed_ir.nodes if n.kind == "slide" and "Metrics" in (n.title or "")]
+    assert len(metrics_slides) >= 2
+    assert len(metrics_slides[0].items) == 4
+
+    # Bullet slide should be split
+    bullet_slides = [n for n in autofixed_ir.nodes if n.kind == "slide" and "Bullets" in (n.title or "")]
+    assert len(bullet_slides) >= 2
+
+    # Empty slide should be populated
+    empty_fixed = [n for n in autofixed_ir.nodes if n.id == "n_empty"][0]
+    assert len(empty_fixed.items) > 0
+

@@ -365,6 +365,11 @@ def test_video_length_shapes_the_scene_budget():
     assert apply_options(FORMATS["video"], {"length": "120"}).max_nodes == 11
 
 
+def test_audience_alias_resolution():
+    res = resolve_options(FORMATS["ppt"], {"presenting_to": "management"})
+    assert res["presenting_to"] == "senior_leadership"
+
+
 @pytest.mark.parametrize("key", sorted(FORMATS))
 def test_every_format_keeps_options_few_and_valid_defaults(key):
     from app.services.generation.audiences import AUDIENCES

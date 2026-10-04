@@ -289,10 +289,21 @@ class UnknownControl(ValueError):
 def resolve_controls(values: dict[str, str] | None) -> dict[str, str]:
     """Fill in defaults and reject anything not in a registry."""
     resolved = dict(DEFAULT_CONTROLS)
-    PASSTHROUGH_KEYS = ("theme", "format", "slide_count", "additional_instructions", "speaker_notes")
+    PASSTHROUGH_KEYS = (
+        "theme",
+        "format",
+        "slide_count",
+        "additional_instructions",
+        "speaker_notes",
+        "version_history",
+        "visual_preference",
+        "content_detail",
+        "scope",
+        "preserve_user_edits",
+    )
     for name, raw_value in (values or {}).items():
         if name in PASSTHROUGH_KEYS:
-            resolved[name] = str(raw_value)
+            resolved[name] = raw_value if not isinstance(raw_value, str) else str(raw_value)
             continue
         registry = CONTROL_REGISTRIES.get(name) or EXTRA_CONTROL_REGISTRIES.get(name)
         if registry is None:

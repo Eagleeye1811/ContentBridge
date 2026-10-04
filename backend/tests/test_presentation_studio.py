@@ -218,3 +218,27 @@ def test_adjust_slide_count_logic():
     assert req.target_count == "15"
     assert req.config.title == "Incident Briefing"
 
+
+def test_presentation_reconfiguration_pipeline():
+    from app.schemas.outputs import PresentationReconfigureRequest, PresentationOutlineRequest
+    req = PresentationReconfigureRequest(
+        config=PresentationOutlineRequest(
+            title="Updated Presentation Title",
+            purpose="technical briefing",
+            audience="technical",
+            slide_count="10",
+            duration="15",
+            language="en",
+            content_detail="detailed",
+            theme="midnight_dark",
+            additional_instructions="Focus on architecture and mitigation steps.",
+        ),
+        scope="all",
+        preserve_user_edits=True,
+    )
+    assert req.config.content_detail == "detailed"
+    assert req.config.purpose == "technical briefing"
+    assert req.config.audience == "technical"
+    assert req.config.title == "Updated Presentation Title"
+
+
