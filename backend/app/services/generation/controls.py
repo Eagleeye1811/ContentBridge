@@ -60,24 +60,40 @@ TONES = _registry(
 
 DETAIL_LEVELS = _registry(
     ControlOption(
+        "concise",
+        "Concise",
+        "Focus on key message and essential facts; short bullets & compact visual summaries.",
+        "Detail level: concise. Focus strictly on the core message and essential key facts. Use short, high-impact bullet fragments and compact visual summaries. Minimize supporting explanation.",
+    ),
+    ControlOption(
         "brief",
-        "Brief",
-        "Only the essentials.",
-        "Detail level: brief. Keep only the most important facts and use well under the "
-        "maximum number of nodes.",
+        "Brief (Concise)",
+        "Alias for concise.",
+        "Detail level: concise. Focus strictly on the core message and essential key facts. Use short, high-impact bullet fragments and compact visual summaries. Minimize supporting explanation.",
+    ),
+    ControlOption(
+        "balanced",
+        "Balanced",
+        "Key message, supporting facts, brief explanation of significance, context, metrics.",
+        "Detail level: balanced. Include the key message, relevant supporting facts, and a brief explanation of significance. Use a mix of bullets, metrics, timelines, diagrams, and concise explanatory text.",
     ),
     ControlOption(
         "standard",
-        "Standard",
-        "Balanced coverage.",
-        "Detail level: standard. Cover the key facts with enough context to act on them.",
+        "Standard (Balanced)",
+        "Alias for balanced.",
+        "Detail level: balanced. Include the key message, relevant supporting facts, and a brief explanation of significance. Use a mix of bullets, metrics, timelines, diagrams, and concise explanatory text.",
+    ),
+    ControlOption(
+        "detailed",
+        "Detailed",
+        "Fuller explanations, relevant context, evidence, implications, relationships, tables.",
+        "Detail level: detailed. Include fuller explanations, relevant context, evidence, and implications. Explain important relationships between findings and their consequences. Include additional source-supported details, qualifications, and unresolved questions.",
     ),
     ControlOption(
         "comprehensive",
-        "Comprehensive",
-        "Every supported point.",
-        "Detail level: comprehensive. Cover every relevant fact the format allows, but "
-        "never pad a section the facts cannot fill.",
+        "Comprehensive (Detailed)",
+        "Alias for detailed.",
+        "Detail level: detailed. Include fuller explanations, relevant context, evidence, and implications. Explain important relationships between findings and their consequences. Include additional source-supported details, qualifications, and unresolved questions.",
     ),
 )
 
@@ -149,6 +165,99 @@ STYLES = _registry(
     ),
 )
 
+PURPOSES = _registry(
+    ControlOption(
+        "executive briefing",
+        "Executive Briefing",
+        "Lead with decision required, key findings, financial implications, risks, and next actions.",
+        "Presentation purpose: Executive Briefing. Lead with key decision required, main findings, financial impact, risk mitigation, and clear next steps.",
+    ),
+    ControlOption(
+        "technical briefing",
+        "Technical Briefing",
+        "Architecture, implementation details, dependencies, constraints, technical trade-offs.",
+        "Presentation purpose: Technical Briefing. Focus on architecture, technical dependencies, exact system parameters, trade-offs, and operational requirements.",
+    ),
+    ControlOption(
+        "research/findings",
+        "Research / Findings",
+        "Emphasize research questions, methodology, findings, evidence, limitations, and implications.",
+        "Presentation purpose: Research / Findings. Focus on core findings, empirical evidence, data points, research limitations, and key analytical takeaways.",
+    ),
+    ControlOption(
+        "public awareness",
+        "Public Awareness",
+        "Accessible language, practical implications, avoiding jargon.",
+        "Presentation purpose: Public Awareness. Use clear accessible phrasing, explain technical terms, emphasize real-world impact, and avoid jargon.",
+    ),
+    ControlOption(
+        "project proposal",
+        "Project Proposal",
+        "Problem, objectives, proposed solution, scope, roadmap, budget, risks, metrics, decisions.",
+        "Presentation purpose: Project Proposal. Structure around problem statement, objectives, solution scope, implementation roadmap, risk analysis, and required decisions.",
+    ),
+    ControlOption(
+        "training",
+        "Training",
+        "Learning objectives, concepts, examples, practical steps, recap questions.",
+        "Presentation purpose: Training. Structure around learning objectives, clear step-by-step explanations, practical examples, and summary takeaways.",
+    ),
+)
+
+DURATIONS = _registry(
+    ControlOption(
+        "5",
+        "5 minutes",
+        "Short briefing.",
+        "Presentation duration: 5 minutes. High-density pacing: focus strictly on essential takeaways.",
+    ),
+    ControlOption(
+        "10",
+        "10 minutes",
+        "Standard briefing.",
+        "Presentation duration: 10 minutes. Standard briefing pacing with key findings and action items.",
+    ),
+    ControlOption(
+        "15",
+        "15 minutes",
+        "Extended presentation.",
+        "Presentation duration: 15 minutes. Moderate pacing with full supporting context, evidence, and clear transitions.",
+    ),
+    ControlOption(
+        "30",
+        "30 minutes",
+        "In-depth workshop/briefing.",
+        "Presentation duration: 30 minutes. Comprehensive pacing with detailed analysis, comparative trade-offs, risk analysis, and complete roadmap.",
+    ),
+)
+
+VISUAL_PREFERENCES = _registry(
+    ControlOption(
+        "text-focused",
+        "Text-focused",
+        "Structured text, clear section lists, tables.",
+        "Visual preference: text-focused. Use clean structured bullet points, two-column split cards, and data tables.",
+    ),
+    ControlOption(
+        "balanced",
+        "Balanced",
+        "Mix of bullet text, KPI cards, process diagrams, timelines, tables.",
+        "Visual preference: balanced. Use a harmonious mix of bullet lists, KPI metric cards, process flows, timelines, and comparison columns.",
+    ),
+    ControlOption(
+        "visual-heavy",
+        "Visual-heavy",
+        "Diagrams, timelines, process flows, KPI metric cards.",
+        "Visual preference: visual-heavy. Maximize visual structures: use process flow cards, timeline nodes, prominent KPI metric cards, visual comparison columns, and structured tables over plain bullet text.",
+    ),
+)
+
+EXTRA_CONTROL_REGISTRIES: dict[str, dict[str, ControlOption]] = {
+    "purpose": PURPOSES,
+    "duration": DURATIONS,
+    "visual_preference": VISUAL_PREFERENCES,
+}
+
 # The dimension name as it appears on requests and on stored outputs.
 CONTROL_REGISTRIES: dict[str, dict[str, ControlOption]] = {
     "tone": TONES,
@@ -157,9 +266,17 @@ CONTROL_REGISTRIES: dict[str, dict[str, ControlOption]] = {
     "style": STYLES,
 }
 
+ALIAS_MAP: dict[str, dict[str, str]] = {
+    "detail_level": {
+        "brief": "concise",
+        "standard": "balanced",
+        "comprehensive": "detailed",
+    }
+}
+
 DEFAULT_CONTROLS: dict[str, str] = {
     "tone": "formal",
-    "detail_level": "standard",
+    "detail_level": "balanced",
     "objective": "inform",
     "style": "structured",
 }
@@ -172,13 +289,29 @@ class UnknownControl(ValueError):
 def resolve_controls(values: dict[str, str] | None) -> dict[str, str]:
     """Fill in defaults and reject anything not in a registry."""
     resolved = dict(DEFAULT_CONTROLS)
-    for name, value in (values or {}).items():
-        registry = CONTROL_REGISTRIES.get(name)
+    PASSTHROUGH_KEYS = (
+        "theme",
+        "format",
+        "slide_count",
+        "additional_instructions",
+        "speaker_notes",
+        "version_history",
+        "visual_preference",
+        "content_detail",
+        "scope",
+        "preserve_user_edits",
+    )
+    for name, raw_value in (values or {}).items():
+        if name in PASSTHROUGH_KEYS:
+            resolved[name] = raw_value if not isinstance(raw_value, str) else str(raw_value)
+            continue
+        registry = CONTROL_REGISTRIES.get(name) or EXTRA_CONTROL_REGISTRIES.get(name)
         if registry is None:
             raise UnknownControl(f"Unknown control {name!r}")
+        value = ALIAS_MAP.get(name, {}).get(raw_value, raw_value)
         if value not in registry:
             raise UnknownControl(
-                f"Unknown {name.replace('_', ' ')} {value!r}. "
+                f"Unknown {name.replace('_', ' ')} {raw_value!r}. "
                 f"Available: {', '.join(sorted(registry))}"
             )
         resolved[name] = value
@@ -187,4 +320,10 @@ def resolve_controls(values: dict[str, str] | None) -> dict[str, str]:
 
 def control_fragments(values: dict[str, str] | None) -> list[str]:
     resolved = resolve_controls(values)
-    return [CONTROL_REGISTRIES[name][resolved[name]].prompt_fragment for name in CONTROL_REGISTRIES]
+    all_registries = {**CONTROL_REGISTRIES, **EXTRA_CONTROL_REGISTRIES}
+    fragments = []
+    for name in all_registries:
+        if name in resolved and resolved[name] in all_registries[name]:
+            fragments.append(all_registries[name][resolved[name]].prompt_fragment)
+    return fragments
+

@@ -20,7 +20,7 @@ RETIRED = ("404", "NOT_FOUND")
 # A used-up daily allowance (free tier) will not recover by waiting a few
 # seconds, so move straight on to the next model.
 DAILY_QUOTA = ("PerDay",)
-RETRY_DELAYS = (2.0, 5.0)
+RETRY_DELAYS = (1.0,)
 
 
 class GeminiProvider:

@@ -19,13 +19,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Restore the session on boot: a stored token is only trusted once /auth/me confirms it.
   useEffect(() => {
     if (!tokenStore.get()) {
+      setUser(null)
       setLoading(false)
       return
     }
     api
       .me()
       .then(setUser)
-      .catch(() => tokenStore.clear())
+      .catch(() => {
+        tokenStore.clear()
+        setUser(null)
+      })
       .finally(() => setLoading(false))
   }, [])
 

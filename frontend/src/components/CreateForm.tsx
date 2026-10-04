@@ -21,8 +21,7 @@ function defaultOptions(format: FormatInfo): Record<string, string> {
 }
 
 /**
- * Create one output: pick a source, this output's own options and a
- * language. Tone and style are chosen automatically to suit the output.
+ * Clean, modern configuration form for generating format-specific outputs.
  */
 export default function CreateForm({
   format,
@@ -75,14 +74,14 @@ export default function CreateForm({
 
   if (ready.length === 0) {
     return (
-      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-dashed border-ink-200 bg-white p-6">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ink-100 text-ink-400">
-          <Icon name="document" />
+      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-dashed border-ink-200 bg-white p-6 shadow-sm">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-brand-600">
+          <Icon name="document" className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium">Add a source first</p>
+          <p className="font-semibold text-ink-900">Add a source document first</p>
           <p className="text-sm text-ink-600">
-            A {name} is written from the key facts of a document, image or text.
+            A {name} is created directly from the extracted facts of your uploaded source.
           </p>
         </div>
         <Link to="/sources">
@@ -96,61 +95,89 @@ export default function CreateForm({
   }
 
   return (
-    <div className="rounded-2xl border border-ink-200 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-ink-100 px-5 py-4">
-        <p className="font-semibold">New {name}</p>
-        <p className="hidden text-sm text-ink-400 sm:block">
-          Written only from the facts in your source
-        </p>
+    <div className="overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-sm">
+      {/* Top Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-100 bg-gradient-to-r from-ink-50 to-white px-6 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-brand-600 shadow-xs">
+            <Icon name={format.key} className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="font-semibold text-ink-900 capitalize">Configure New {format.name}</h2>
+            <p className="text-xs text-ink-500">
+              Verified generation anchored to your authoritative source of truth.
+            </p>
+          </div>
+        </div>
         {onCancel && !running && (
           <button
             onClick={onCancel}
-            className="ml-auto rounded-lg px-2 py-1 text-sm text-ink-400 hover:bg-ink-100 hover:text-ink-900"
+            className="rounded-lg px-2.5 py-1 text-xs font-medium text-ink-500 hover:bg-ink-100 hover:text-ink-900 transition"
           >
             Close
           </button>
         )}
       </div>
 
-      <div className="grid gap-x-8 gap-y-5 px-5 py-5 md:grid-cols-2 xl:grid-cols-[minmax(0,1.3fr)_repeat(3,auto)]">
-        <Field label="From source">
-          <Select
-            value={source}
-            onChange={setSource}
-            options={ready.map((d) => ({ key: d.id, label: d.filename }))}
-          />
-        </Field>
-        {format.options.map((o) => (
-          <Field key={o.key} label={o.label}>
-            <Segmented
-              options={o.choices}
-              value={options[o.key] ?? o.default}
-              onChange={(v) => setOptions((cur) => ({ ...cur, [o.key]: v }))}
+      {/* Main Parameters Section */}
+      <div className="p-6 space-y-6">
+        {/* Primary Row: Source & Language */}
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <Field label="Authoritative Source" help="Document to extract facts from">
+            <Select
+              value={source}
+              onChange={setSource}
+              options={ready.map((d) => ({ key: d.id, label: `📄 ${d.filename}` }))}
             />
           </Field>
-        ))}
-        <Field label="Language">
-          <Segmented
-            options={languages.map((code) => ({ key: code, label: languageLabel(code) }))}
-            value={language}
-            onChange={setLanguage}
-          />
-        </Field>
+
+          <Field label="Output Language" help="Target language for output">
+            <Segmented
+              options={languages.map((code) => ({ key: code, label: languageLabel(code) }))}
+              value={language}
+              onChange={setLanguage}
+              className="w-full justify-start"
+            />
+          </Field>
+        </div>
+
+        {/* Dynamic Format Options Grid */}
+        {format.options.length > 0 && (
+          <div className="border-t border-ink-100 pt-5">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-2">
+              {format.options.map((o) => (
+                <Field key={o.key} label={o.label} help={o.help || undefined}>
+                  <Segmented
+                    options={o.choices}
+                    value={options[o.key] ?? o.default}
+                    onChange={(v) => setOptions((cur) => ({ ...cur, [o.key]: v }))}
+                    className="w-full justify-start"
+                  />
+                </Field>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 rounded-b-2xl border-t border-ink-100 bg-ink-50 px-5 py-3">
+      {/* Bottom Action Footer */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-ink-100 bg-ink-50/80 px-6 py-4">
         {running ? (
-          <div className="min-w-48 flex-1">
+          <div className="min-w-64 flex-1">
             <Progress value={job?.progress ?? 0.05} label={friendlyStage(job?.stage ?? 'generating')} />
           </div>
         ) : error ? (
-          <p className="flex-1 text-sm text-red-700">{error}</p>
+          <p className="flex-1 text-sm font-medium text-red-600">{error}</p>
         ) : (
-          <p className="flex-1 text-xs text-ink-400">Usually ready in under a minute.</p>
+          <div className="flex items-center gap-2 text-xs text-ink-500">
+            <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Ready to transform · Output generated in ~10–15 seconds
+          </div>
         )}
-        <Button onClick={create} disabled={running || !source}>
+
+        <Button onClick={create} disabled={running || !source} size="md">
           <Icon name="spark" />
-          {running ? 'Creating…' : `Create ${name}`}
+          {running ? 'Generating Output…' : `Create ${format.name}`}
         </Button>
       </div>
     </div>

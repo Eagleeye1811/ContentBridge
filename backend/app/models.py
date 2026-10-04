@@ -64,7 +64,7 @@ BlockType = Enum(
     native_enum=False,
 )
 JobKind = Enum(
-    "ingest", "index", "extract", "generate", "verify", name="job_kind", native_enum=False
+    "ingest", "index", "extract", "generate", "verify", "render_video", name="job_kind", native_enum=False
 )
 JobStatus = Enum("queued", "running", "succeeded", "failed", name="job_status", native_enum=False)
 FactType = Enum(
@@ -99,8 +99,14 @@ Audience = Enum(
     "technical",
     "public",
     "social",
+    "officials",
+    "senior_leadership",
+    "team",
+    "researchers",
+    "students",
     name="audience",
     native_enum=False,
+    length=64,
 )
 OutputStatus = Enum(
     "draft",

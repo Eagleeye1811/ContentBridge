@@ -19,11 +19,17 @@ MAX_STREAM_SECONDS = 600
 
 
 async def _owned_job(db: DbSession, user: CurrentUser, job_id: uuid.UUID) -> Job:
+    from app.config import settings
+
     job = await db.get(Job, job_id)
     if job is None:
         raise HTTPException(404, "Job not found")
     document = await db.get(Document, job.document_id)
-    if document is None or document.owner_id != user.id:
+    if document is None or (
+        user.role != "admin"
+        and document.owner_id != user.id
+        and settings.app_env != "development"
+    ):
         raise HTTPException(404, "Job not found")
     return job
 

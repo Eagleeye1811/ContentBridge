@@ -75,6 +75,48 @@ class GenerationResult:
     attempts: int = 1
 
 
+GENERIC_PLACEHOLDER_REGEX = re.compile(
+    r"\b(Event\s*\d+|#\d+|Point\s*\d+|Metric\s*\d+)\b", re.IGNORECASE
+)
+
+
+def check_deck_quality(ir: ContentIR, detail_level: str = "balanced") -> list[str]:
+    """Perform pre-export and quality checks on generated slide decks."""
+    warnings: list[str] = []
+    seen_titles: set[str] = set()
+
+    for idx, node in enumerate(ir.nodes):
+        if node.kind != "slide":
+            continue
+        title = (node.title or node.text or "").strip()
+        if title:
+            if title.lower() in seen_titles:
+                warnings.append(f"Repetitive slide title detected: '{title}'")
+            seen_titles.add(title.lower())
+
+        all_text = " ".join(iter_text(node))
+        match = GENERIC_PLACEHOLDER_REGEX.search(all_text)
+        if match:
+            warnings.append(
+                f"Generic placeholder '{match.group(0)}' detected in slide {idx+1} ('{title}')"
+            )
+
+    total_words = sum(len(t.split()) for node in ir.nodes for t in iter_text(node))
+    slides_count = len([n for n in ir.nodes if n.kind == "slide"])
+    if slides_count > 0:
+        avg_words = total_words / slides_count
+        if detail_level == "detailed" and avg_words < 25:
+            warnings.append(
+                f"Content density warning: 'detailed' mode requested but deck average is only {avg_words:.1f} words per slide."
+            )
+        elif detail_level == "concise" and avg_words > 120:
+            warnings.append(
+                f"Content density warning: 'concise' mode requested but deck average is {avg_words:.1f} words per slide."
+            )
+
+    return warnings
+
+
 def _validate(ir: ContentIR, spec: FormatSpec, labels: set[str], language: str = "en") -> list[str]:
     """Structural problems worth a retry, phrased so a model can act on them."""
     problems: list[str] = []
@@ -122,6 +164,12 @@ def _validate(ir: ContentIR, spec: FormatSpec, labels: set[str], language: str =
                 f"Node {node.id!r} cited no facts. Every non-heading node must cite at "
                 "least one fact label."
             )
+        for text_item in iter_text(node):
+            if GENERIC_PLACEHOLDER_REGEX.search(text_item):
+                problems.append(
+                    f"Node {node.id!r} contains generic placeholder like 'Event 1' or '#1'. Use actual descriptive event descriptions or metric values from the facts."
+                )
+                break
 
     # Asking for Marathi and silently receiving English is a failure the
     # reviewer would have to notice by eye. Catch it here instead.

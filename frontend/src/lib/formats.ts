@@ -7,7 +7,7 @@ export const FORMAT_GROUPS: { label: string; keys: string[] }[] = [
 export const FORMAT_KEYS = FORMAT_GROUPS.flatMap((g) => g.keys)
 
 /** Outputs stored before the LinkedIn rename still belong to its page. */
-export const typeOf = (o: { type: string }) => (o.type === 'social' ? 'linkedin' : o.type)
+export const typeOf = (o?: { type?: string } | null) => (o?.type === 'social' ? 'linkedin' : (o?.type ?? ''))
 
 /** Newest version of each piece of content; older versions are history. */
 export function latestOnly<
