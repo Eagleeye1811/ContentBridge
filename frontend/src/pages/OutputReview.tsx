@@ -58,7 +58,7 @@ export default function OutputReview() {
     setError(null)
     try {
       const job = await api.regenerate(id)
-      const final = await api.streamJob(job.id, () => {})
+      const final = await api.streamJob(job.id, () => { })
       if (final.status === 'failed') {
         setError(final.error ?? 'Could not write a new version')
         return
@@ -72,8 +72,21 @@ export default function OutputReview() {
     }
   }
 
-  if (error && !output) return <Notice tone="bad">{error}</Notice>
-  if (!output || !draft) return <p className="text-sm text-ink-400">Loading…</p>
+  if (error && !output)
+    return (
+      <div className="space-y-4">
+        <Notice tone="bad">{error}</Notice>
+        <Link
+          to="/outputs"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700"
+        >
+          <Icon name="back" />
+          Back to all outputs
+        </Link>
+      </div>
+    )
+
+  if (!output || !draft) return <div className="p-10 text-sm text-ink-400">Loading output…</div>
 
   const type = typeOf(output)
   const locked = output.status === 'approved'
@@ -117,6 +130,7 @@ export default function OutputReview() {
               ir={draft}
               audience={output.audience}
               options={output.controls?.format}
+              outputId={id}
             />
           )}
         </div>

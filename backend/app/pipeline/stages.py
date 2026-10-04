@@ -671,3 +671,96 @@ async def verify_output(output_id: uuid.UUID, job_id: uuid.UUID) -> None:
             log.exception("verification failed for output %s", output_id)
             await db.rollback()
             await mark(db, job, status="failed", stage="failed", error=str(exc))
+
+
+# --------------------------------------------------------------------------
+# Video render: blocking MP4 render job
+# --------------------------------------------------------------------------
+
+
+async def render_video_output(output_id: uuid.UUID, job_id: uuid.UUID) -> None:
+    """Render an approved/verified video output to MP4 and persist it.
+
+    The render is CPU-bound and can take 30–90 seconds depending on the number
+    of scenes and the host hardware.  Progress is reported as stage updates so
+    the frontend can show a spinner or progress bar.
+    """
+    import functools
+
+    import anyio
+
+    from app.models import Export, Output
+    from app.schemas.content_ir import ContentIR
+    from app.services.rendering.video_renderer import render as video_render
+
+    async with SessionLocal() as db:
+        job = await db.get(Job, job_id)
+        output = await db.get(Output, output_id)
+        if job is None or output is None:
+            log.error("render_video: job %s or output %s vanished", job_id, output_id)
+            return
+
+        try:
+            await mark(db, job, status="running", stage="loading storyboard", progress=0.05)
+
+            ir = ContentIR.model_validate(output.content_ir)
+            scenes = [n for n in ir.nodes if n.kind == "scene" and (n.text or "").strip()]
+            if not scenes:
+                raise RuntimeError("No scene nodes found — cannot render video.")
+
+            orientation = (output.controls or {}).get("format", {}).get("screen", "wide")
+            language = output.language or "en"
+
+            await mark(
+                db, job,
+                stage=f"rendering {len(scenes)} scenes (TTS + visuals + video encode)",
+                progress=0.10,
+            )
+
+            # Run the blocking render in a thread so the event loop stays free.
+            mp4_bytes: bytes = await anyio.to_thread.run_sync(
+                functools.partial(video_render, ir, orientation=orientation, language=language),
+                cancellable=True,
+            )
+
+            await mark(db, job, stage="saving video file", progress=0.90)
+
+            filename = (
+                f"video_{output.audience}_{output.language}_v{output.version}.mp4"
+            )
+            uri = await anyio.to_thread.run_sync(
+                storage.put, f"exports/{output.id}/{filename}", mp4_bytes
+            )
+            db.add(
+                Export(
+                    output_id=output.id,
+                    format="mp4",
+                    storage_uri=uri,
+                    size_bytes=len(mp4_bytes),
+                )
+            )
+            await db.commit()
+
+            await mark(
+                db,
+                job,
+                status="succeeded",
+                stage="done",
+                progress=1.0,
+                result={
+                    "storage_uri": uri,
+                    "size_bytes": len(mp4_bytes),
+                    "scenes": len(scenes),
+                    "orientation": orientation,
+                    "language": language,
+                },
+            )
+            log.info(
+                "render_video: MP4 ready for output %s — %.1f MB",
+                output_id, len(mp4_bytes) / 1e6,
+            )
+
+        except Exception as exc:  # noqa: BLE001
+            log.exception("render_video failed for output %s", output_id)
+            await db.rollback()
+            await mark(db, job, status="failed", stage="failed", error=str(exc))

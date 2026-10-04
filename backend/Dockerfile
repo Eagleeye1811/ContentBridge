@@ -11,6 +11,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential libgl1 libglib2.0-0 \
         tesseract-ocr tesseract-ocr-hin tesseract-ocr-mar \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./

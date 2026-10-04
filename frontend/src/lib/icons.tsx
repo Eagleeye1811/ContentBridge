@@ -12,6 +12,7 @@ const PATHS: Record<string, string> = {
   twitter: 'M4 4l16 16M20 4L4 20',
   users: 'M16 20v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 20v-1a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
   video: 'M3 6h13v12H3zM16 10l5-3v10l-5-3',
+  play: 'M8 5v14l11-7z',
   // navigation
   document: 'M6 3h9l5 5v13H6zM14 3v6h6',
   facts: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',

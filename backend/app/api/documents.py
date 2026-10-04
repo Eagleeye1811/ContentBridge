@@ -22,7 +22,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 async def _owned(db: DbSession, user: CurrentUser, document_id: uuid.UUID) -> Document:
     doc = await db.get(Document, document_id)
-    if doc is None or doc.owner_id != user.id:
+    if doc is None or (user.role != "admin" and doc.owner_id != user.id):
         raise HTTPException(404, "Document not found")
     return doc
 

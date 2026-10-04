@@ -138,6 +138,16 @@ export const api = {
   regenerate: (id: string) => request<Job>(`/outputs/${id}/regenerate`, { method: 'POST' }),
   exportUrl: (id: string, format: string, citations = false) =>
     objectUrl(`/outputs/${id}/export?format=${format}&citations=${citations}`),
+  getVideoStatus: (id: string) =>
+    request<{ ready: boolean; size_bytes: number | null }>(`/outputs/${id}/video-status`),
+  videoStreamUrl: (id: string) => {
+    const token = tokenStore.get()
+    return `${BASE}/outputs/${id}/video-stream${token ? `?token=${encodeURIComponent(token)}` : ''}`
+  },
+  thumbnailUrl: (id: string, sceneIndex = 0) => {
+    const token = tokenStore.get()
+    return `${BASE}/outputs/${id}/thumbnail?scene=${sceneIndex}${token ? `&token=${encodeURIComponent(token)}` : ''}`
+  },
 
   verifyOutput: (id: string) => request<Job>(`/outputs/${id}/verify`, { method: 'POST' }),
   getClaims: (id: string) => request<VerificationSummary>(`/outputs/${id}/claims`),
@@ -169,6 +179,7 @@ export const api = {
   audit: (documentId: string) => request<AuditEntry[]>(`/documents/${documentId}/audit`),
 
   getJob: (id: string) => request<Job>(`/jobs/${id}`),
+  renderVideo: (id: string) => request<Job>(`/outputs/${id}/render-video`, { method: 'POST' }),
 
   // Employee management (administrators only)
   listRoles: () => request<JobRole[]>('/admin/roles'),

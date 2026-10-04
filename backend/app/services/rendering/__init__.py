@@ -10,7 +10,22 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.schemas.content_ir import ContentIR
-from app.services.rendering import docx_writer, html_writer, markdown, pptx_writer, srt, text
+from app.services.rendering import html_writer, markdown, srt, text
+
+
+def _render_docx(ir: ContentIR, **kwargs: object) -> bytes:
+    from app.services.rendering import docx_writer
+    return docx_writer.render(ir, **kwargs)
+
+
+def _render_pptx(ir: ContentIR, **kwargs: object) -> bytes:
+    from app.services.rendering import pptx_writer
+    return pptx_writer.render(ir, **kwargs)
+
+
+def _render_mp4(ir: ContentIR, **kwargs: object) -> bytes:
+    from app.services.rendering import video_renderer
+    return video_renderer.render(ir, **kwargs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +51,7 @@ RENDERERS: dict[str, RendererSpec] = {
             "docx",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             True,
-            docx_writer.render,
+            _render_docx,
         ),
         RendererSpec(
             "pptx",
@@ -44,7 +59,15 @@ RENDERERS: dict[str, RendererSpec] = {
             "pptx",
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             True,
-            pptx_writer.render,
+            _render_pptx,
+        ),
+        RendererSpec(
+            "mp4",
+            "Video (MP4)",
+            "mp4",
+            "video/mp4",
+            True,
+            _render_mp4,
         ),
     )
 }

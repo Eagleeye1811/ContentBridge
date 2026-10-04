@@ -70,8 +70,22 @@ export default function Workspace() {
     return c
   }, [outputs])
 
-  if (error) return <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-  if (!doc || !catalog) return <p className="text-sm text-ink-400">Loading…</p>
+  if (error)
+    return (
+      <div className="mx-auto max-w-lg rounded-2xl border border-ink-200 bg-white p-8 text-center shadow-sm">
+        <p className="text-base font-semibold text-ink-900">Source Not Found</p>
+        <p className="mt-1 text-sm text-ink-600">This document may have been removed or the database was refreshed.</p>
+        <div className="mt-6">
+          <Link
+            to="/sources"
+            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700"
+          >
+            <Icon name="document" className="h-4 w-4" />
+            Go to Sources
+          </Link>
+        </div>
+      </div>
+    )
 
   const names = new Map(catalog.formats.map((f) => [f.key, f.name]))
   const status = DOC_STATUS[doc.status] ?? { label: doc.status, tone: 'neutral' as const }

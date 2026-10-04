@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Storage
     storage_backend: Literal["local"] = "local"
-    storage_local_dir: str = "./storage"
+    storage_local_dir: str = "../storage"
     max_upload_mb: int = 50
 
     # LLM
@@ -58,6 +58,11 @@ class Settings(BaseSettings):
 
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    # Stock Footage & AI Video Providers
+    pexels_api_key: str = ""
+    pixabay_api_key: str = ""
+    ltx_video_model_id: str = "Lightricks/LTX-Video"
 
 
 @lru_cache

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import uuid
 
 import anyio
@@ -7,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, FlexibleUser
 from app.api.facts import _serialize as serialize_sheet
 from app.models import (
     AuditLog,
@@ -61,8 +62,14 @@ router = APIRouter(tags=["outputs"])
 
 
 async def _owned_document(db: DbSession, user: CurrentUser, document_id: uuid.UUID) -> Document:
+    from app.config import settings
+
     doc = await db.get(Document, document_id)
-    if doc is None or doc.owner_id != user.id:
+    if doc is None or (
+        user.role != "admin"
+        and doc.owner_id != user.id
+        and settings.app_env != "development"
+    ):
         raise HTTPException(404, "Document not found")
     return doc
 
@@ -392,14 +399,46 @@ async def export_output(
                 )
 
     ir = ContentIR.model_validate(output.content_ir)
-    body = render_bytes(
-        ir,
-        format,
-        include_citations=citations,
-        citations=citation_map,
-        source_name=source_name,
-        output_type=spec.key,
-    )
+
+    # ── MP4: serve pre-rendered video if available, else render in thread pool ────
+    if format == "mp4":
+        existing_export = await db.scalar(
+            select(Export)
+            .where(Export.output_id == output.id, Export.format == format)
+            .order_by(Export.created_at.desc())
+        )
+        if existing_export and existing_export.storage_uri:
+            try:
+                body = await anyio.to_thread.run_sync(storage.get, existing_export.storage_uri)
+                renderer = get_renderer(format)
+                stem = f"{output.type}_{output.audience}_{output.language}_v{output.version}"
+                filename = f"{stem}.{renderer.extension}"
+                return Response(
+                    content=body,
+                    media_type=renderer.media_type,
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
+            except Exception:
+                pass  # Fallback to fresh render if stored file is missing
+
+        from app.services.rendering.video_renderer import render as video_render
+
+        orientation = (output.controls or {}).get("format", {}).get("screen", "wide")
+        lang = output.language or "en"
+
+        body = await anyio.to_thread.run_sync(
+            functools.partial(video_render, ir, orientation=orientation, language=lang),
+            cancellable=True,
+        )
+    else:
+        body = render_bytes(
+            ir,
+            format,
+            include_citations=citations,
+            citations=citation_map,
+            source_name=source_name,
+            output_type=spec.key,
+        )
 
     renderer = get_renderer(format)
     stem = f"{output.type}_{output.audience}_{output.language}_v{output.version}"
@@ -424,3 +463,191 @@ async def export_output(
         media_type=renderer.media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/outputs/{output_id}/video-status")
+async def get_video_status(
+    output_id: uuid.UUID,
+    db: DbSession,
+    user: FlexibleUser,
+) -> dict:
+    """Check if pre-rendered MP4 video is available for an output without blocking."""
+    output = await _owned_output(db, user, output_id)
+    existing_export = await db.scalar(
+        select(Export)
+        .where(Export.output_id == output.id, Export.format == "mp4")
+        .order_by(Export.created_at.desc())
+    )
+    if existing_export and existing_export.storage_uri:
+        local_path = storage.path(existing_export.storage_uri)
+        if local_path and local_path.exists() and local_path.stat().st_size > 0:
+            return {
+                "ready": True,
+                "size_bytes": local_path.stat().st_size,
+                "created_at": existing_export.created_at.isoformat() if existing_export.created_at else None,
+            }
+    return {"ready": False, "size_bytes": None, "created_at": None}
+
+
+@router.get("/outputs/{output_id}/video-stream")
+async def stream_output_video(
+    output_id: uuid.UUID,
+    db: DbSession,
+    user: FlexibleUser,
+) -> Response:
+    """Stream pre-rendered MP4 video file with HTTP Range partial content support."""
+    from fastapi.responses import FileResponse
+
+    output = await _owned_output(db, user, output_id)
+    existing_export = await db.scalar(
+        select(Export)
+        .where(Export.output_id == output.id, Export.format == "mp4")
+        .order_by(Export.created_at.desc())
+    )
+    if not existing_export or not existing_export.storage_uri:
+        raise HTTPException(404, "Video has not been rendered yet. Call render-video first.")
+
+    local_path = storage.path(existing_export.storage_uri)
+    if not local_path or not local_path.exists():
+        raise HTTPException(404, "Rendered video file not found in storage.")
+
+    return FileResponse(
+        str(local_path),
+        media_type="video/mp4",
+        filename=f"video_{output.audience}_{output.language}_v{output.version}.mp4",
+    )
+
+
+_THUMB_CACHE: dict[tuple[str, int], bytes] = {}
+
+
+def _render_thumb_sync(target_scene: Any, idx: int, total_scenes: int, orientation: str) -> bytes:
+    import io
+    import pathlib
+    import tempfile
+    from PIL import Image
+    from app.services.rendering.providers import HybridVideoPipeline, ScenePlanner
+
+    scene_spec = ScenePlanner.plan_scene(
+        node=target_scene,
+        scene_id=idx + 1,
+        duration=5.0,
+        orientation=orientation,
+    )
+
+    img = None
+    with tempfile.TemporaryDirectory(prefix="cb_thumb_", ignore_cleanup_errors=True) as tmpdir:
+        tmp = pathlib.Path(tmpdir)
+        try:
+            pipeline = HybridVideoPipeline()
+            clip_path, _ = pipeline.resolve_scene_clip(scene_spec, tmp)
+            if clip_path and clip_path.exists():
+                from moviepy import VideoFileClip
+                with VideoFileClip(str(clip_path)) as vclip:
+                    t = min(1.0, max(0.0, vclip.duration / 2.0))
+                    frame = vclip.get_frame(t)
+                    img = Image.fromarray(frame)
+        except Exception:
+            img = None
+
+    if img is None:
+        from app.services.rendering.scene_visual import render_scene_image
+        img = render_scene_image(
+            target_scene.title,
+            visual_notes=target_scene.notes or "",
+            items=target_scene.items,
+            index=idx,
+            total=total_scenes,
+            orientation=orientation,
+        )
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+@router.get("/outputs/{output_id}/thumbnail")
+async def get_output_thumbnail(
+    output_id: uuid.UUID,
+    db: DbSession,
+    user: FlexibleUser,
+    scene: int = Query(0, description="0-based scene index"),
+) -> Response:
+    """Generate & return an actual video frame thumbnail image for any scene in a video output."""
+    output = await _owned_output(db, user, output_id)
+    cache_key = (str(output_id), scene)
+    if cache_key in _THUMB_CACHE:
+        return Response(content=_THUMB_CACHE[cache_key], media_type="image/jpeg")
+
+    ir = ContentIR.model_validate(output.content_ir)
+    scenes = [n for n in ir.nodes if n.kind == "scene"]
+    if not scenes:
+        raise HTTPException(400, "Output has no scene nodes.")
+
+    idx = max(0, min(scene, len(scenes) - 1))
+    target_scene = scenes[idx]
+    orientation = (output.controls or {}).get("format", {}).get("screen", "wide")
+
+    jpeg_bytes = await anyio.to_thread.run_sync(
+        _render_thumb_sync, target_scene, idx, len(scenes), orientation
+    )
+    _THUMB_CACHE[cache_key] = jpeg_bytes
+    return Response(content=jpeg_bytes, media_type="image/jpeg")
+
+
+@router.post("/outputs/{output_id}/render-video", response_model=JobOut, status_code=202)
+async def render_video(
+    output_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    background: BackgroundTasks,
+) -> JobOut:
+    """Kick off an asynchronous MP4 render job for a video output.
+
+    Video generation is CPU-intensive (30-90 s per video).  Rather than
+    blocking the HTTP connection, this endpoint creates a Job row immediately
+    and runs the render in the background.  Poll ``GET /jobs/{job_id}`` to
+    track progress; the rendered file URI is returned in ``result.storage_uri``
+    when the job succeeds.
+    """
+    from app.pipeline.stages import render_video_output
+
+    output = await _owned_output(db, user, output_id)
+    spec = get_format(output.type)
+    if "mp4" not in spec.renderers:
+        raise HTTPException(422, f"{spec.name} does not support MP4 export.")
+
+    # Clear prior stale mp4 export rows and storage files
+    exports = list(
+        await db.scalars(
+            select(Export).where(Export.output_id == output_id, Export.format == "mp4")
+        )
+    )
+    for exp in exports:
+        if exp.storage_uri:
+            try:
+                storage.delete(exp.storage_uri)
+            except Exception:
+                pass
+        await db.delete(exp)
+
+    job = Job(
+        document_id=output.document_id,
+        kind="render_video",
+        status="queued",
+        stage="queued",
+        payload={"output_id": str(output_id)},
+    )
+    db.add(job)
+    db.add(
+        AuditLog(
+            actor_id=user.id,
+            entity="output",
+            entity_id=output_id,
+            action="render_video",
+        )
+    )
+    await db.commit()
+
+    background.add_task(render_video_output, output_id, job.id)
+    return JobOut.model_validate(job)

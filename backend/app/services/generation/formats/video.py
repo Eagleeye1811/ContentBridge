@@ -23,7 +23,7 @@ production brief, not a video.
 
 Open with the most important fact, end with the action or source the facts
 give. Calm, factual delivery; never dramatise.""",
-    renderers=("docx", "markdown", "html", "srt"),
+    renderers=("docx", "markdown", "html", "srt", "mp4"),
     max_nodes=10,
     options=(
         FormatOption(

@@ -22,11 +22,13 @@ export default function OutputPreview({
   ir,
   audience,
   options = {},
+  outputId,
 }: {
   type: string
   ir: ContentIR
   audience: string
   options?: Record<string, string>
+  outputId?: string
 }) {
   switch (type) {
     case 'ppt':
@@ -43,7 +45,7 @@ export default function OutputPreview({
     case 'infographic':
       return <InfographicPreview ir={ir} shape={options.shape} />
     case 'video':
-      return <VideoPreview ir={ir} screen={options.screen} />
+      return <VideoPreview ir={ir} screen={options.screen} outputId={outputId} />
     case 'advisory':
       return <DocumentPreview ir={ir} kicker="Advisory" />
     case 'summary':

@@ -3,6 +3,7 @@ import { api } from '@/api/client'
 import { Icon } from '@/lib/icons'
 
 const FILES: Record<string, { label: string; ext: string; note: string }> = {
+  mp4: { label: 'MP4 Video', ext: 'mp4', note: 'Rendered video with audio narration' },
   pptx: { label: 'PowerPoint', ext: 'pptx', note: 'Ready-to-present slides' },
   docx: { label: 'Word', ext: 'docx', note: 'Edit in Word or Google Docs' },
   srt: { label: 'Subtitles', ext: 'srt', note: 'For your video editor' },
@@ -34,8 +35,10 @@ export default function DownloadPanel({
       const a = document.createElement('a')
       a.href = url
       a.download = `${filenameStem}.${FILES[format]?.ext ?? format}`
+      document.body.appendChild(a)
       a.click()
-      URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Download failed')
     } finally {
