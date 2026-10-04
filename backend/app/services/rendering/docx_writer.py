@@ -81,8 +81,12 @@ def _add_node(doc: Document, node: Node) -> None:
             for item in node.items or []:
                 doc.add_paragraph(item, style="List Bullet")
         case "post":
-            for item in node.items or []:
-                doc.add_paragraph(item)
+            if node.items:
+                for item in node.items:
+                    if item:
+                        doc.add_paragraph(item)
+            elif node.text:
+                doc.add_paragraph(node.text)
         case "callout":
             _add_callout(doc, node)
         case "table":

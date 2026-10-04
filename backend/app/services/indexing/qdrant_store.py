@@ -32,7 +32,12 @@ class SearchHit:
 
 class VectorStore:
     def __init__(self, url: str | None = None, collection: str | None = None) -> None:
-        self._client = AsyncQdrantClient(url=url or settings.qdrant_url)
+        resolved_url = url or settings.qdrant_url
+        # Use in-memory Qdrant when pointing at localhost so the app runs without Docker
+        if "localhost" in resolved_url or "127.0.0.1" in resolved_url:
+            self._client = AsyncQdrantClient(":memory:")
+        else:
+            self._client = AsyncQdrantClient(url=resolved_url)
         self.collection = collection or settings.qdrant_collection
 
     async def ensure_collection(self, dim: int) -> None:

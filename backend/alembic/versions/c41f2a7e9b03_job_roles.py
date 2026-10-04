@@ -65,9 +65,9 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=False, server_default=""),
         sa.Column(
             "allowed_types",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
             nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
+            server_default=sa.text("'[]'"),
         ),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -75,11 +75,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name"),
     )
-    op.add_column("users", sa.Column("job_role_id", sa.UUID(), nullable=True))
-    op.create_index(op.f("ix_users_job_role_id"), "users", ["job_role_id"], unique=False)
-    op.create_foreign_key(
-        "fk_users_job_role_id", "users", "job_roles", ["job_role_id"], ["id"], ondelete="SET NULL"
-    )
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.add_column(sa.Column("job_role_id", sa.UUID(), nullable=True))
+        batch_op.create_index(op.f("ix_users_job_role_id"), ["job_role_id"], unique=False)
+        batch_op.create_foreign_key(
+            "fk_users_job_role_id", "job_roles", ["job_role_id"], ["id"], ondelete="SET NULL"
+        )
     op.bulk_insert(
         roles,
         [
@@ -90,7 +91,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_users_job_role_id", "users", type_="foreignkey")
-    op.drop_index(op.f("ix_users_job_role_id"), table_name="users")
-    op.drop_column("users", "job_role_id")
+    with op.batch_alter_table("users") as batch_op:
+        batch_op.drop_constraint("fk_users_job_role_id", type_="foreignkey")
+        batch_op.drop_index(op.f("ix_users_job_role_id"))
+        batch_op.drop_column("job_role_id")
     op.drop_table("job_roles")

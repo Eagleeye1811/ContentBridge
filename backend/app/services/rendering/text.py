@@ -15,7 +15,11 @@ def _render_node(node: Node) -> str:
             return "\n".join(lines + [f"* {item}" for item in (node.items or [])])
         case "post":
             # A post's items are its paragraphs, pasted as-is into the platform.
-            return "\n\n".join(item for item in (node.items or []) if item)
+            if node.items:
+                res = "\n\n".join(item for item in node.items if item)
+                if res:
+                    return res
+            return (node.text or "").strip()
         case "panel" | "scene":
             lines = [(node.title or node.kind.title()).upper()]
             if node.text:
@@ -56,7 +60,16 @@ def render(ir: ContentIR, *, output_type: str = "", **_: object) -> str:
 
 def _thread(ir: ContentIR) -> str:
     """X posts: one block per post, numbered when they form a thread."""
-    posts = ["\n".join(i for i in (n.items or []) if i) for n in ir.nodes if n.items]
+    posts: list[str] = []
+    for n in ir.nodes:
+        if n.items:
+            t = "\n".join(i for i in n.items if i)
+            if t:
+                posts.append(t)
+                continue
+        if n.text:
+            posts.append(n.text.strip())
     if len(posts) > 1:
         posts = [f"{p}\n{k}/{len(posts)}" for k, p in enumerate(posts, start=1)]
     return "\n\n---\n\n".join(posts).rstrip() + "\n"
+

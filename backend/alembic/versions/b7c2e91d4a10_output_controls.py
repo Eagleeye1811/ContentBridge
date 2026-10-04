@@ -25,9 +25,9 @@ def upgrade() -> None:
         "outputs",
         sa.Column(
             "controls",
-            postgresql.JSONB(astext_type=sa.Text()),
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
             nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
+            server_default=sa.text("'{}'"),
         ),
     )
 

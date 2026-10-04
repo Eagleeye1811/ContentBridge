@@ -63,7 +63,11 @@ def _node_html(node: Node) -> str:
             label = f"<p><strong>{escape(node.title)}</strong></p>" if node.title else ""
             return f"{label}<ul>{items}</ul>" if items else ""
         case "post":
-            return "".join(f"<p>{escape(i)}</p>" for i in node.items or [] if i)
+            if node.items:
+                res = "".join(f"<p>{escape(i)}</p>" for i in node.items if i)
+                if res:
+                    return res
+            return f"<p>{escape(node.text)}</p>" if node.text else ""
         case "callout":
             severity = node.severity or "info"
             title = escape(node.title or severity)

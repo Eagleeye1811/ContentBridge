@@ -24,11 +24,16 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import JSON
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY, JSONB as PG_JSONB, UUID as PGUUID
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+JSONB = JSON().with_variant(PG_JSONB(), "postgresql")
+def ARRAY(item_type):
+    return JSON().with_variant(PG_ARRAY(item_type), "postgresql")
+
 
 # --- enumerations (stored as VARCHAR + CHECK, so migrations stay painless) ---
 
@@ -127,7 +132,9 @@ def _pk() -> Mapped[uuid.UUID]:
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        nullable=False,
     )
 
 

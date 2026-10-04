@@ -123,7 +123,7 @@ async def _index(db, document: Document, job: Job) -> int:
             rows.append(
                 Chunk(
                     document_id=document.id,
-                    block_ids=chunk.block_ids,
+                    block_ids=[str(b) for b in chunk.block_ids],
                     text=chunk.text,
                     token_count=chunk.token_count,
                     qdrant_point_id=point_id,
@@ -634,7 +634,7 @@ async def verify_output(output_id: uuid.UUID, job_id: uuid.UUID) -> None:
                     output_id=output.id,
                     node_id=result.claim.node_id,
                     text=result.claim.text,
-                    cited_fact_ids=[uuid.UUID(f) for f in result.claim.fact_ids],
+                    cited_fact_ids=[str(f) for f in result.claim.fact_ids],
                     verdict=result.verdict,
                     score=result.score,
                     rationale=result.rationale,

@@ -10,6 +10,13 @@ function fieldsOf(node: IRNode): Field[] {
   if (node.text != null) fields.push('text')
   if (node.items != null) fields.push('items')
   if (node.notes != null) fields.push('notes')
+  if (fields.length === 0) {
+    if (node.kind === 'post' || node.kind === 'bullets' || node.kind === 'slide') {
+      fields.push('items')
+    } else {
+      fields.push('text')
+    }
+  }
   return fields
 }
 
